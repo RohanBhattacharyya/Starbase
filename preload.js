@@ -15,5 +15,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   launchGame: (instanceName) => ipcRenderer.invoke('launch-game', instanceName),
   deleteInstance: (instanceName) => ipcRenderer.invoke('delete-instance', instanceName),
   deleteMod: (instanceName, modId) => ipcRenderer.invoke('delete-mod', instanceName, modId),
-  checkForOpenstarboundUpdate: () => ipcRenderer.invoke('check-for-openstarbound-update')
+  checkForOpenstarboundUpdate: () => ipcRenderer.invoke('check-for-openstarbound-update'),
+  showInputDialog: (options) => ipcRenderer.invoke('show-input-dialog', options)
 });

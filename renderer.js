@@ -124,8 +124,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (newInstanceButton) {
         newInstanceButton.addEventListener('click', async () => {
-            const instanceName = prompt('Enter a name for the new instance:');
-            if (instanceName) {
+            const { value: instanceName, canceled } = await window.electronAPI.showInputDialog({
+                title: 'Create New Instance',
+                message: 'Enter a name for the new instance:',
+                placeholder: 'My New Instance'
+            });
+
+            if (!canceled && instanceName) {
                 const created = await window.electronAPI.createInstance(instanceName);
                 if (created) {
                     console.log(`Instance '${created}' created successfully.`);

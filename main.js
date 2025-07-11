@@ -521,3 +521,8 @@ ipcMain.handle('check-for-openstarbound-update', async () => {
         return { updateAvailable: false, latestVersion: null, error: error.message };
     }
 });
+
+ipcMain.handle('show-input-dialog', async (event, options) => {
+    const { value, canceled } = await dialog.showInputBox(BrowserWindow.getFocusedWindow(), options);
+    return { value, canceled };
+});
