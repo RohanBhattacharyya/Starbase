@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const browseWorkshopButton = document.getElementById('browse-workshop-button');
     const instanceList = document.getElementById('instance-list');
     const instanceDetails = document.getElementById('instance-details');
+    const updateInfoDiv = document.getElementById('update-info');
 
     let currentSelectedInstance = null; // Store the currently selected instance object
 
@@ -97,6 +98,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
             `;
             await loadInstances();
+
+            // Check for OpenStarbound updates
+            const updateInfo = await window.electronAPI.checkForOpenstarboundUpdate();
+            if (updateInfo.updateAvailable) {
+                updateInfoDiv.innerHTML = `
+                    <p>A new OpenStarbound version (${updateInfo.latestVersion}) is available! 
+                    <button id="update-client-button">Update Client</button></p>
+                `;
+                document.getElementById('update-client-button').addEventListener('click', async () => {
+                    document.getElementById('update-client-button').disabled = true;
+                    updateInfoDiv.textContent = 'Updating client...';
+                    const success = await window.electronAPI.downloadClient();
+                    if (success) {
+                        updateInfoDiv.textContent = 'Client updated successfully!';
+                    } else {
+                        updateInfoDiv.textContent = 'Client update failed.';
+                    }
+                });
+            } else {
+                updateInfoDiv.textContent = 'OpenStarbound client is up to date.';
+            }
         }
     }
 
