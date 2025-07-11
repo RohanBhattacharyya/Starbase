@@ -16,5 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteInstance: (instanceName) => ipcRenderer.invoke('delete-instance', instanceName),
   deleteMod: (instanceName, modId) => ipcRenderer.invoke('delete-mod', instanceName, modId),
   checkForOpenstarboundUpdate: () => ipcRenderer.invoke('check-for-openstarbound-update'),
-  openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options)
+  openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options),
+  // New: Expose a way for the input dialog to send its response back
+  sendDialogResponse: (response) => ipcRenderer.send('dialog-response', response)
 });

@@ -20,16 +20,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     okButton.addEventListener('click', () => {
-        ipcRenderer.send('dialog-response', { value: inputElement.value, canceled: false });
+        window.electronAPI.sendDialogResponse({ value: inputElement.value, canceled: false });
     });
 
     cancelButton.addEventListener('click', () => {
-        ipcRenderer.send('dialog-response', { value: null, canceled: true });
+        window.electronAPI.sendDialogResponse({ value: null, canceled: true });
     });
 
     inputElement.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
-            ipcRenderer.send('dialog-response', { value: inputElement.value, canceled: false });
+            window.electronAPI.sendDialogResponse({ value: inputElement.value, canceled: false });
         }
     });
 });
