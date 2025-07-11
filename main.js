@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const zlib = require('zlib'); // Import zlib
+const zlib = require('zlib');
 const Store = require('electron-store');
 const axios = require('axios');
 const yauzl = require('yauzl');
@@ -138,6 +138,7 @@ ipcMain.handle('download-client', async () => {
         
         fs.unlinkSync(downloadPath); // Clean up the downloaded zip
         store.set('clientDownloaded', true);
+        store.set('openstarboundVersion', latestRelease.tag_name); // Store the downloaded version
         return true;
 
     } catch (error) {
@@ -310,8 +311,9 @@ ipcMain.handle('download-mod', async (event, modId, instanceName) => {
             steamcmdProcess.on('error', (err) => {
                 console.error('Failed to start steamcmd process for download:', err);
                 reject(err);
-            });
-        });
+            }
+        );
+    });
 
         // Move the downloaded mod to the instance's mods folder
         if (fs.existsSync(downloadedModPath)) {
@@ -522,7 +524,45 @@ ipcMain.handle('check-for-openstarbound-update', async () => {
     }
 });
 
-ipcMain.handle('show-input-dialog', async (event, options) => {
-    const { value, canceled } = await dialog.showInputBox(BrowserWindow.getFocusedWindow(), options);
-    return { value, canceled };
+let inputDialogWindow = null;
+
+ipcMain.handle('open-input-dialog', (event, options) => {
+    return new Promise((resolve) => {
+        if (inputDialogWindow) {
+            inputDialogWindow.focus();
+            return;
+        }
+
+        inputDialogWindow = new BrowserWindow({
+            width: 400,
+            height: 200,
+            parent: BrowserWindow.getFocusedWindow(),
+            modal: true,
+            show: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false
+            }
+        });
+
+        inputDialogWindow.loadFile('inputDialog.html');
+
+        inputDialogWindow.once('ready-to-show', () => {
+            inputDialogWindow.show();
+            inputDialogWindow.webContents.send('set-dialog-options', options);
+        });
+
+        inputDialogWindow.on('closed', () => {
+            inputDialogWindow = null;
+            resolve({ value: null, canceled: true }); // Resolve with canceled if window is closed directly
+        });
+
+        ipcMain.once('dialog-response', (event, result) => {
+            if (inputDialogWindow) {
+                inputDialogWindow.close();
+            }
+            resolve(result);
+        });
+    });
 });
