@@ -7,17 +7,18 @@ const axios = require('axios');
 const yauzl = require('yauzl');
 const tar = require('tar-fs');
 const { spawn } = require('child_process');
+const fse = require('fs-extra'); // Import fs-extra
 
 const store = new Store();
 
 const instancesDir = path.join(app.getPath('userData'), 'instances');
-const clientDir = path.join(app.getPath('userData'), 'openstarbound');
+const openstarboundVersionsDir = path.join(app.getPath('userData'), 'openstarbound_versions'); // New directory for different versions
 const steamcmdDir = path.join(app.getPath('userData'), 'steamcmd');
 const steamcmdExecutable = path.join(steamcmdDir, 'steamcmd.sh');
 
-if (!fs.existsSync(instancesDir)) fs.mkdirSync(instancesDir, { recursive: true });
-if (!fs.existsSync(clientDir)) fs.mkdirSync(clientDir, { recursive: true });
-if (!fs.existsSync(steamcmdDir)) fs.mkdirSync(steamcmdDir, { recursive: true });
+if (!fs.existsSync(instancesDir)) fse.mkdirpSync(instancesDir); // Use fse.mkdirpSync for recursive creation
+if (!fs.existsSync(openstarboundVersionsDir)) fse.mkdirpSync(openstarboundVersionsDir);
+if (!fs.existsSync(steamcmdDir)) fse.mkdirpSync(steamcmdDir);
 
 function createWindow () {
   const mainWindow = new BrowserWindow({
@@ -55,25 +56,42 @@ ipcMain.handle('select-pak', async () => {
 
 ipcMain.handle('get-instances', async () => store.get('instances', []));
 
-ipcMain.handle('create-instance', async (event, instanceName) => {
+ipcMain.handle('create-instance', async (event, instanceName, versionTag) => {
     const instances = store.get('instances', []);
     if (instances.some(inst => inst.name === instanceName)) {
         dialog.showErrorBox('Error', 'An instance with this name already exists.');
         return null;
     }
+
     const instancePath = path.join(instancesDir, instanceName);
+    const instanceAssetsPath = path.join(instancePath, 'assets');
+    const instanceModsPath = path.join(instancePath, 'mods');
+    const instanceStoragePath = path.join(instancePath, 'storage');
+    const instanceClientPath = path.join(instancePath, 'client');
+
+    const selectedVersionPath = path.join(openstarboundVersionsDir, versionTag);
+    const sourceClientPath = path.join(selectedVersionPath, 'client_distribution');
+
     try {
-        fs.mkdirSync(path.join(instancePath, 'assets'), { recursive: true });
-        fs.mkdirSync(path.join(instancePath, 'mods'), { recursive: true });
+        // Create instance directories
+        fse.mkdirpSync(instanceAssetsPath);
+        fse.mkdirpSync(instanceModsPath);
+        fse.mkdirpSync(instanceStoragePath);
+
+        // Copy client files to instance
+        fse.copySync(sourceClientPath, instanceClientPath, { overwrite: true });
+
+        // Symlink packed.pak
         const pakPath = store.get('packedPakPath');
-        if (pakPath) fs.symlinkSync(pakPath, path.join(instancePath, 'assets', 'packed.pak'));
+        if (pakPath) fs.symlinkSync(pakPath, path.join(instanceAssetsPath, 'packed.pak'));
         else throw new Error('packed.pak path is not set.');
-        store.set('instances', [...instances, { name: instanceName, mods: [] }]);
+
+        store.set('instances', [...instances, { name: instanceName, version: versionTag, mods: [] }]);
         return instanceName;
     } catch (error) {
         console.error('Failed to create instance:', error);
         dialog.showErrorBox('Instance Creation Failed', error.message);
-        if (fs.existsSync(instancePath)) fs.rmSync(instancePath, { recursive: true, force: true });
+        if (fs.existsSync(instancePath)) fse.removeSync(instancePath); // Clean up partially created directory
         return null;
     }
 });
@@ -102,16 +120,19 @@ ipcMain.handle('download-client', async () => {
         });
 
         console.log('Download complete. Extracting zip...');
+        const versionSpecificClientDir = path.join(openstarboundVersionsDir, latestRelease.tag_name);
+        fse.mkdirpSync(versionSpecificClientDir); // Create version-specific directory
+
         await new Promise((resolve, reject) => {
             yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
                 if (err) return reject(err);
                 zipfile.readEntry();
                 zipfile.on('entry', (entry) => {
-                    if (entry.fileName === 'client.tar') {
+                    if (entry.fileName.includes('client.tar')) {
                         console.log('Found client.tar. Extracting tarball...');
                         zipfile.openReadStream(entry, (err, readStream) => {
                             if (err) return reject(err);
-                            const extract = tar.extract(clientDir, {
+                            const extract = tar.extract(versionSpecificClientDir, {
                                 map: (header) => {
                                     // Remove the top-level 'client_distribution' folder from paths
                                     header.name = header.name.replace(/^client_distribution\//, '');
@@ -137,7 +158,6 @@ ipcMain.handle('download-client', async () => {
         });
         
         fs.unlinkSync(downloadPath); // Clean up the downloaded zip
-        store.set('clientDownloaded', true);
         store.set('openstarboundVersion', latestRelease.tag_name); // Store the downloaded version
         return true;
 
@@ -150,7 +170,26 @@ ipcMain.handle('download-client', async () => {
 });
 
 ipcMain.handle('is-client-downloaded', async () => {
-    return store.get('clientDownloaded', false);
+    // Check if any version is downloaded
+    const versions = store.get('openstarboundVersions', []);
+    return versions.length > 0;
+});
+
+ipcMain.handle('get-openstarbound-versions', async () => {
+    const versions = [];
+    try {
+        const downloadedVersions = await fse.readdir(openstarboundVersionsDir);
+        for (const versionTag of downloadedVersions) {
+            const versionPath = path.join(openstarboundVersionsDir, versionTag);
+            const stat = await fse.stat(versionPath);
+            if (stat.isDirectory()) {
+                versions.push({ tag: versionTag, path: versionPath });
+            } 
+        }
+    } catch (error) {
+        console.error('Error reading OpenStarbound versions directory:', error);
+    }
+    return versions;
 });
 
 ipcMain.handle('download-steamcmd', async () => {
@@ -325,7 +364,7 @@ ipcMain.handle('download-mod', async (event, modId, instanceName) => {
                 const destinationPath = path.join(instanceModsPath, modFolderName);
 
                 console.log(`Moving mod from ${sourcePath} to ${destinationPath}`);
-                fs.renameSync(sourcePath, destinationPath);
+                fse.moveSync(sourcePath, destinationPath, { overwrite: true }); // Use fse.moveSync
                 console.log(`Mod ${modId} moved successfully.`);
 
                 // Update instance data with the new mod
@@ -383,9 +422,9 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         return false;
     }
 
-    const starboundExecutable = path.join(clientDir, 'linux', 'starbound');
+    const starboundExecutable = path.join(instance.clientPath, 'linux', 'starbound'); // Use instance-specific client path
     if (!fs.existsSync(starboundExecutable)) {
-        dialog.showErrorBox('Error', 'OpenStarbound executable not found. Please ensure the client is downloaded.');
+        dialog.showErrorBox('Error', 'OpenStarbound executable not found. Please ensure the client is downloaded for this instance.');
         return false;
     }
 
@@ -394,12 +433,15 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
 
     const instancePath = path.join(instancesDir, instanceName);
     const instanceModsPath = path.join(instancePath, 'mods');
+    const instanceAssetsPath = path.join(instancePath, 'assets');
+    const instanceStoragePath = path.join(instancePath, 'storage');
 
     const args = [];
     const env = { ...process.env };
 
     // Set the Starbound assets path to the instance's assets folder
-    env.STARBOUND_ASSET_SOURCE = path.join(instancePath, 'assets');
+    env.STARBOUND_ASSET_SOURCE = instanceAssetsPath;
+    env.STARBOUND_PATH = instancePath; // Set STARBOUND_PATH to the instance root
 
     // Add enabled mods to the command line arguments
     if (instance.mods && instance.mods.length > 0) {
@@ -410,11 +452,11 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         }
     }
 
-    console.log(`Launching ${starboundExecutable} with args: ${args.join(' ')} and env: STARBOUND_ASSET_SOURCE=${env.STARBOUND_ASSET_SOURCE}`);
+    console.log(`Launching ${starboundExecutable} with args: ${args.join(' ')} and env: STARBOUND_ASSET_SOURCE=${env.STARBOUND_ASSET_SOURCE}, STARBOUND_PATH=${env.STARBOUND_PATH}`);
 
     try {
         const gameProcess = spawn(starboundExecutable, args, {
-            cwd: clientDir, // Run from the client directory
+            cwd: instance.clientPath, // Run from the instance's client directory
             env: env,
             detached: true, // Detach the child process from the parent
             stdio: 'ignore' // Ignore stdio to prevent blocking the main process
@@ -442,7 +484,7 @@ ipcMain.handle('delete-instance', async (event, instanceName) => {
 
     try {
         if (fs.existsSync(instancePath)) {
-            fs.rmSync(instancePath, { recursive: true, force: true });
+            fse.removeSync(instancePath); // Use fse.removeSync for recursive deletion
             console.log(`Instance directory ${instancePath} deleted.`);
         }
 
@@ -475,7 +517,7 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
 
     try {
         if (fs.existsSync(modPath)) {
-            fs.rmSync(modPath, { recursive: true, force: true });
+            fse.removeSync(modPath); // Use fse.removeSync for recursive deletion
             console.log(`Mod directory ${modPath} deleted.`);
         }
 

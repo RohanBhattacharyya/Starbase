@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   selectPak: () => ipcRenderer.invoke('select-pak'),
   getInstances: () => ipcRenderer.invoke('get-instances'),
-  createInstance: (name) => ipcRenderer.invoke('create-instance', name),
+  createInstance: (name, versionTag) => ipcRenderer.invoke('create-instance', name, versionTag),
   downloadClient: () => ipcRenderer.invoke('download-client'),
   isClientDownloaded: () => ipcRenderer.invoke('is-client-downloaded'),
   downloadSteamcmd: () => ipcRenderer.invoke('download-steamcmd'),
@@ -16,7 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteInstance: (instanceName) => ipcRenderer.invoke('delete-instance', instanceName),
   deleteMod: (instanceName, modId) => ipcRenderer.invoke('delete-mod', instanceName, modId),
   checkForOpenstarboundUpdate: () => ipcRenderer.invoke('check-for-openstarbound-update'),
-  openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options)
+  openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options),
+  getOpenstarboundVersions: () => ipcRenderer.invoke('get-openstarbound-versions')
 });
 
 // Expose specific IPC methods for the input dialog renderer
