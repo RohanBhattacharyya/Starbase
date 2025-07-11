@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Enter Instance Name</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+            border-radius: 5px;
+            background-color: #3e3e42;
+            color: #d4d4d4;
+            box-sizing: border-box;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 14px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button.primary {
+            background-color: #007acc;
+            color: white;
+        }
+        button.primary:hover {
+            background-color: #005a9e;
+        }
+        button.secondary {
+            background-color: #555;
+            color: white;
+        }
+        button.secondary:hover {
+            background-color: #777;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="dialog-message">Enter a name:</h1>
+    <input type="text" id="dialog-input" placeholder="Name">
+    <div class="buttons">
+        <button id="ok-button" class="primary">OK</button>
+        <button id="cancel-button" class="secondary">Cancel</button>
+    </div>
+    <script src="./inputDialog-renderer.js"></script>
+</body>
+</html>
