@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const zlib = require('zlib'); // Import zlib
 const Store = require('electron-store');
 const axios = require('axios');
 const yauzl = require('yauzl');
@@ -169,6 +170,7 @@ ipcMain.handle('download-steamcmd', async () => {
         console.log('Download complete. Extracting steamcmd...');
         await new Promise((resolve, reject) => {
             fs.createReadStream(downloadPath)
+                .pipe(zlib.createGunzip()) // Decompress the tar.gz
                 .pipe(tar.extract(steamcmdDir))
                 .on('finish', resolve)
                 .on('error', reject);
@@ -488,5 +490,34 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
         console.error('Failed to delete mod:', error);
         dialog.showErrorBox('Mod Deletion Failed', error.message);
         return false;
+    }
+});
+
+ipcMain.handle('check-for-openstarbound-update', async () => {
+    const releaseUrl = 'https://api.github.com/repos/OpenStarbound/OpenStarbound/releases';
+    try {
+        const response = await axios.get(releaseUrl);
+        const latestRelease = response.data.find(r => !r.prerelease && !r.draft);
+        if (!latestRelease) return { updateAvailable: false, latestVersion: null };
+
+        const latestVersionTag = latestRelease.tag_name;
+        const currentVersionTag = store.get('openstarboundVersion');
+
+        if (!currentVersionTag) {
+            // If no version is stored, assume it's a fresh install or old version, suggest download
+            return { updateAvailable: true, latestVersion: latestVersionTag };
+        }
+
+        // Simple version comparison (e.g., v1.0.0 vs v1.0.1)
+        // A more robust comparison might be needed for complex versioning schemes
+        if (latestVersionTag !== currentVersionTag) {
+            return { updateAvailable: true, latestVersion: latestVersionTag };
+        }
+
+        return { updateAvailable: false, latestVersion: latestVersionTag };
+
+    } catch (error) {
+        console.error('Failed to check for OpenStarbound update:', error);
+        return { updateAvailable: false, latestVersion: null, error: error.message };
     }
 });
