@@ -7,7 +7,7 @@ const axios = require('axios');
 const yauzl = require('yauzl');
 const tar = require('tar-fs');
 const { spawn } = require('child_process');
-const fse = require('fs-extra'); // Import fs-extra
+const fse = require('fs-extra');
 
 const store = new Store();
 
@@ -19,9 +19,9 @@ if (process.env.STARBASE_STEAM_API_KEY) {
 
 const instancesDir = path.join(app.getPath('userData'), 'instances');
 const steamcmdDir = path.join(app.getPath('userData'), 'steamcmd');
-const steamcmdExecutable = path.join(steamcmdDir, 'steamcmd.sh');
+const steamcmdExecutable = path.join(steamcmdDir, process.platform === 'win32' ? 'steamcmd.exe' : 'steamcmd.sh');
 
-if (!fs.existsSync(instancesDir)) fse.mkdirpSync(instancesDir); // Use fse.mkdirpSync for recursive creation
+if (!fs.existsSync(instancesDir)) fse.mkdirpSync(instancesDir);
 if (!fs.existsSync(steamcmdDir)) fse.mkdirpSync(steamcmdDir);
 
 async function downloadAndExtractClient(versionTag, instancePath) {
@@ -93,6 +93,97 @@ async function downloadAndExtractClient(versionTag, instancePath) {
 
 let mainWindow;
 
+async function ensureSteamCMD() {
+    if (fs.existsSync(steamcmdExecutable)) {
+        console.log('SteamCMD is already installed.');
+        return true;
+    }
+
+    console.log('SteamCMD not found. Starting download...');
+    dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'SteamCMD Setup',
+        message: 'SteamCMD is required for workshop features. It will be downloaded now. This may take a few moments.',
+        buttons: ['OK']
+    });
+
+    const platform = process.platform;
+    let steamcmdUrl, archiveName;
+
+    if (platform === 'win32') {
+        steamcmdUrl = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip';
+        archiveName = 'steamcmd.zip';
+    } else if (platform === 'darwin') {
+        steamcmdUrl = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz';
+        archiveName = 'steamcmd_osx.tar.gz';
+    } else { // linux
+        steamcmdUrl = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz';
+        archiveName = 'steamcmd_linux.tar.gz';
+    }
+
+    const tempDir = app.getPath('temp');
+    const downloadPath = path.join(tempDir, archiveName);
+
+    try {
+        console.log(`Downloading steamcmd from ${steamcmdUrl}...`);
+        const response = await axios({ url: steamcmdUrl, method: 'GET', responseType: 'stream' });
+        const writer = fs.createWriteStream(downloadPath);
+        response.data.pipe(writer);
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        console.log('Download complete. Extracting steamcmd...');
+        if (archiveName.endsWith('.zip')) {
+            // Windows extraction
+            await new Promise((resolve, reject) => {
+                yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
+                    if (err) return reject(err);
+                    zipfile.readEntry();
+                    zipfile.on('entry', (entry) => {
+                        zipfile.openReadStream(entry, (err, readStream) => {
+                            if (err) return reject(err);
+                            const filePath = path.join(steamcmdDir, entry.fileName);
+                            fse.ensureDirSync(path.dirname(filePath));
+                            const writeStream = fs.createWriteStream(filePath);
+                            readStream.pipe(writeStream);
+                            writeStream.on('finish', () => zipfile.readEntry());
+                        });
+                    });
+                    zipfile.on('end', resolve);
+                });
+            });
+        } else { // .tar.gz for Linux/macOS
+            await new Promise((resolve, reject) => {
+                fs.createReadStream(downloadPath)
+                    .pipe(zlib.createGunzip())
+                    .pipe(tar.extract(steamcmdDir))
+                    .on('finish', resolve)
+                    .on('error', reject);
+            });
+        }
+
+        fs.unlinkSync(downloadPath);
+        fs.chmodSync(steamcmdExecutable, '755');
+        store.set('steamcmdDownloaded', true);
+        console.log('SteamCMD setup complete.');
+        dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Setup Complete',
+            message: 'SteamCMD has been successfully installed.',
+            buttons: ['OK']
+        });
+        return true;
+
+    } catch (error) {
+        console.error('Failed to download and extract steamcmd:', error);
+        dialog.showErrorBox('SteamCMD Download Failed', error.message);
+        if (fs.existsSync(downloadPath)) fs.unlinkSync(downloadPath);
+        return false;
+    }
+}
+
 function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1024,
@@ -111,7 +202,14 @@ function createWindow () {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+    createWindow();
+    mainWindow.webContents.on('did-finish-load', () => {
+        if (mainWindow.webContents.getURL().includes('setup.html')) return;
+        ensureSteamCMD();
+    });
+});
+
 app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
@@ -136,11 +234,9 @@ ipcMain.handle('create-instance', async (event, { value: instanceName, version }
         return null;
     }
 
-    console.log(`DEBUG: create-instance handler - instancesDir: ${instancesDir} (type: ${typeof instancesDir}), instanceName: ${instanceName} (type: ${typeof instanceName})`);
     const instancePath = path.join(instancesDir, instanceName);
 
     try {
-        // Download and extract the selected version
         const clientPath = await downloadAndExtractClient(version.tag, instancePath);
         if (!clientPath) {
             throw new Error('Failed to download and extract client.');
@@ -154,7 +250,6 @@ ipcMain.handle('create-instance', async (event, { value: instanceName, version }
         fse.mkdirpSync(instanceModsPath);
         fse.mkdirpSync(instanceStoragePath);
 
-        // Symlink packed.pak
         const pakPath = store.get('packedPakPath');
         if (pakPath) {
             fs.symlinkSync(pakPath, path.join(instanceAssetsPath, 'packed.pak'));
@@ -167,7 +262,7 @@ ipcMain.handle('create-instance', async (event, { value: instanceName, version }
     } catch (error) {
         console.error('Failed to create instance:', error);
         dialog.showErrorBox('Instance Creation Failed', error.message);
-        if (fs.existsSync(instancePath)) fse.removeSync(instancePath); // Clean up
+        if (fs.existsSync(instancePath)) fse.removeSync(instancePath);
         return null;
     }
 });
@@ -182,46 +277,6 @@ ipcMain.handle('get-openstarbound-versions', async () => {
         console.error('Failed to fetch OpenStarbound versions:', error);
         return [];
     }
-});
-
-ipcMain.handle('download-steamcmd', async () => {
-    const steamcmdUrl = 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz';
-    const tempDir = app.getPath('temp');
-    const downloadPath = path.join(tempDir, 'steamcmd_linux.tar.gz');
-
-    try {
-        console.log('Downloading steamcmd...');
-        const response = await axios({ url: steamcmdUrl, method: 'GET', responseType: 'stream' });
-        const writer = fs.createWriteStream(downloadPath);
-        response.data.pipe(writer);
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
-        });
-
-        console.log('Download complete. Extracting steamcmd...');
-        await new Promise((resolve, reject) => {
-            fs.createReadStream(downloadPath)
-                .pipe(zlib.createGunzip()) // Decompress the tar.gz
-                .pipe(tar.extract(steamcmdDir))
-                .on('finish', resolve)
-                .on('error', reject);
-        });
-
-        fs.unlinkSync(downloadPath); // Clean up the downloaded tar.gz
-        store.set('steamcmdDownloaded', true);
-        return true;
-
-    } catch (error) {
-        console.error('Failed to download and extract steamcmd:', error);
-        dialog.showErrorBox('SteamCMD Download Failed', error.message);
-        if (fs.existsSync(downloadPath)) fs.unlinkSync(downloadPath); // Cleanup on error
-        return false;
-    }
-});
-
-ipcMain.handle('is-steamcmd-downloaded', async () => {
-    return store.get('steamcmdDownloaded', false);
 });
 
 ipcMain.handle('open-workshop-window', (event, instanceName) => {
@@ -251,67 +306,13 @@ ipcMain.handle('open-external-link', (event, url) => {
 
 let inputDialogWindow = null;
 
-function showInputDialog(options) {
-    return new Promise((resolve) => {
-        if (inputDialogWindow) {
-            inputDialogWindow.focus();
-            return;
-        }
-
-        if (!mainWindow) {
-            console.error("main.js: Cannot open input dialog, mainWindow is not defined.");
-            return resolve({ value: null, canceled: true });
-        }
-
-        const parentWindow = mainWindow;
-
-        inputDialogWindow = new BrowserWindow({
-            width: 400,
-            height: 250,
-            parent: parentWindow,
-            modal: true,
-            show: false,
-            webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false
-            }
-        });
-
-        inputDialogWindow.loadFile('inputDialog.html');
-
-        inputDialogWindow.once('ready-to-show', () => {
-            inputDialogWindow.show();
-            inputDialogWindow.webContents.send('set-dialog-options', options);
-        });
-
-        const onDialogResponse = (event, result) => {
-            if (inputDialogWindow) {
-                inputDialogWindow.close();
-            }
-            resolve(result);
-        };
-
-        ipcMain.once('dialog-response', onDialogResponse);
-
-        inputDialogWindow.on('closed', () => {
-            inputDialogWindow = null;
-            ipcMain.removeListener('dialog-response', onDialogResponse);
-            resolve({ value: null, canceled: true });
-        });
-    });
-}
-
 ipcMain.handle('open-input-dialog', (event, options) => {
-    console.log('main.js: Received open-input-dialog IPC call with options:', options);
     return showInputDialog(options);
 });
 
 function showInputDialog(options) {
-    console.log('main.js: showInputDialog called with options:', options);
     return new Promise((resolve) => {
         if (inputDialogWindow) {
-            console.log('main.js: inputDialogWindow already exists, focusing.');
             inputDialogWindow.focus();
             return;
         }
@@ -338,13 +339,11 @@ function showInputDialog(options) {
         inputDialogWindow.loadFile('inputDialog.html');
 
         inputDialogWindow.once('ready-to-show', () => {
-            console.log('main.js: inputDialogWindow ready-to-show. Sending options:', options);
             inputDialogWindow.show();
             inputDialogWindow.webContents.send('set-dialog-options', options);
         });
 
         const onDialogResponse = (event, result) => {
-            console.log('main.js: Received dialog-response:', result);
             if (inputDialogWindow) {
                 inputDialogWindow.close();
             }
@@ -354,12 +353,48 @@ function showInputDialog(options) {
         ipcMain.once('dialog-response', onDialogResponse);
 
         inputDialogWindow.on('closed', () => {
-            console.log('main.js: inputDialogWindow closed.');
             inputDialogWindow = null;
             ipcMain.removeListener('dialog-response', onDialogResponse);
             resolve({ value: null, canceled: true });
         });
     });
+}
+
+function getSteamWorkshopDirectory() {
+    const homeDir = app.getPath('home');
+    switch (process.platform) {
+        case 'win32':
+            // Default Steam install location on Windows
+            const winPath = 'C:\\Program Files (x86)\\Steam\\steamapps\\workshop';
+            if (fs.existsSync(winPath)) {
+                return winPath;
+            }
+            // Fallback to the managed steamcmd directory
+            return path.join(steamcmdDir, 'steamapps', 'workshop');
+
+        case 'darwin':
+            // Default Steam install location on macOS
+            const macPath = path.join(homeDir, 'Library', 'Application Support', 'Steam', 'steamapps', 'workshop');
+             if (fs.existsSync(macPath)) {
+                return macPath;
+            }
+            // Fallback to the managed steamcmd directory
+            return path.join(steamcmdDir, 'steamapps', 'workshop');
+
+        case 'linux':
+        default:
+            // Common Steam install locations on Linux
+            const path1 = path.join(homeDir, '.steam', 'steam', 'steamapps', 'workshop');
+            const path2 = path.join(homeDir, '.local', 'share', 'Steam', 'steamapps', 'workshop');
+            const path3 = path.join(homeDir, '.steam', 'SteamApps', 'workshop'); // Older path
+
+            if (fs.existsSync(path3)) return path3;
+            if (fs.existsSync(path1)) return path1;
+            if (fs.existsSync(path2)) return path2;
+            
+            // Fallback to the managed steamcmd directory
+            return path.join(steamcmdDir, 'steamapps', 'workshop');
+    }
 }
 
 ipcMain.handle('search-workshop', async (event, query) => {
@@ -383,10 +418,8 @@ ipcMain.handle('search-workshop', async (event, query) => {
     const isNumericId = /^\d+$/.test(query);
 
     if (isNumericId) {
-        // Use GetPublishedFileDetails for specific ID
         searchUrl = `https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/`;
     } else {
-        // Use QueryFiles for text search
         searchUrl = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/`;
     }
 
@@ -432,16 +465,18 @@ ipcMain.handle('search-workshop', async (event, query) => {
 
 ipcMain.handle('download-mod', async (event, { modId, modName, instanceName }) => {
     if (!fs.existsSync(steamcmdExecutable)) {
-        dialog.showErrorBox('Error', 'SteamCMD executable not found. Please download SteamCMD first.');
+        dialog.showErrorBox('Error', 'SteamCMD executable not found. Please ensure it was installed correctly.');
         return false;
     }
 
     const instancePath = path.join(instancesDir, instanceName);
     const instanceModsPath = path.join(instancePath, 'mods');
-    const downloadedModPath = path.join(app.getPath('home'), '.steam', 'SteamApps', 'workshop', 'content', '211820', modId);
+    
+    const workshopDir = getSteamWorkshopDirectory();
+    const downloadedModPath = path.join(workshopDir, 'content', '211820', modId);
+    const fallbackModPath = path.join(steamcmdDir, 'steamapps', 'workshop', 'content', '211820', modId);
 
     try {
-        // Ensure steamcmd.sh is executable
         fs.chmodSync(steamcmdExecutable, '755');
 
         console.log(`Downloading mod ${modId} using steamcmd...`);
@@ -464,18 +499,34 @@ ipcMain.handle('download-mod', async (event, { modId, modName, instanceName }) =
             steamcmdProcess.on('close', (code) => {
                 if (code !== 0) {
                     console.error(`steamcmd process exited with code ${code}`);
-                    reject(new Error(`SteamCMD exited with code ${code}`));
-                    return;
                 }
-                console.log(`Mod ${modId} downloaded to ${downloadedModPath}`);
+                console.log(`steamcmd process finished. Checking for downloaded files.`);
                 resolve();
-            }
-        );
-    });
+            });
+        });
 
+        let finalModPath;
+        console.log(`Checking for mod at primary path: ${downloadedModPath}`);
         if (fs.existsSync(downloadedModPath)) {
+            finalModPath = downloadedModPath;
+        } else {
+            console.log(`Mod not found at primary path. Checking fallback: ${fallbackModPath}`);
+            if (fs.existsSync(fallbackModPath)) {
+                finalModPath = fallbackModPath;
+            }
+        }
+
+        if (finalModPath) {
+            console.log(`Found mod at: ${finalModPath}`);
             const destinationPath = path.join(instanceModsPath, `${modName}.pak`);
-            fse.moveSync(path.join(downloadedModPath, 'contents.pak'), destinationPath, { overwrite: true });
+            const sourcePak = path.join(finalModPath, 'contents.pak');
+
+            if (!fs.existsSync(sourcePak)) {
+                 throw new Error(`'contents.pak' not found in the downloaded mod folder: ${finalModPath}`);
+            }
+
+            fse.moveSync(sourcePak, destinationPath, { overwrite: true });
+            console.log(`Moved ${sourcePak} to ${destinationPath}`);
 
             const instances = store.get('instances', []);
             const updatedInstances = instances.map(inst => {
@@ -489,12 +540,13 @@ ipcMain.handle('download-mod', async (event, { modId, modName, instanceName }) =
             });
             store.set('instances', updatedInstances);
 
-            // Notify the renderer to update the instances
             mainWindow.webContents.send('instance-updated');
+            
+            fse.remove(finalModPath).catch(err => console.error(`Failed to clean up mod directory: ${err}`));
 
             return true;
         } else {
-            throw new Error('Downloaded mod not found at expected path.');
+            throw new Error(`Downloaded mod not found at expected paths.`);
         }
 
     } catch (error) {
@@ -512,14 +564,11 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
                 if (mod.id === modId) {
                     const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
                     
-                    // Base name of the mod file (e.g., "Arcana")
-                    const baseModName = mod.name.replace('.disabled', ''); // Ensure base name is clean
+                    const baseModName = mod.name.replace('.disabled', '');
                     
-                    // Current actual filename on disk (e.g., "Arcana.pak" or "Arcana.pak.disabled")
                     const currentFileName = enabled ? `${baseModName}.pak.disabled` : `${baseModName}.pak`;
                     const oldModPath = path.join(instanceModsPath, currentFileName);
 
-                    // Target filename on disk (e.g., "Arcana.pak" or "Arcana.pak.disabled")
                     const targetFileName = enabled ? `${baseModName}.pak` : `${baseModName}.pak.disabled`;
                     const newModPath = path.join(instanceModsPath, targetFileName);
 
@@ -531,10 +580,9 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
                     } catch (error) {
                         console.error(`Failed to rename mod file: ${error.message}`);
                         dialog.showErrorBox('Mod Status Update Failed', `Could not rename mod file: ${error.message}`);
-                        return mod; // Return original mod if rename fails
+                        return mod;
                     }
 
-                    // Update the stored mod object: name remains base, enabled status changes
                     return { ...mod, name: baseModName, enabled: enabled };
                 }
                 return mod;
@@ -544,7 +592,6 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
         return inst;
     });
     store.set('instances', updatedInstances);
-    // Notify the renderer to update the instances after status change
     mainWindow.webContents.send('instance-updated');
     return true;
 });
@@ -564,28 +611,18 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         return false;
     }
 
-    // Ensure the executable is runnable
     fs.chmodSync(starboundExecutable, '755');
-
-    const instancePath = path.join(instancesDir, instanceName);
-    const instanceModsPath = path.join(instancePath, 'mods');
-    const instanceAssetsPath = path.join(instancePath, 'assets');
-    const instanceStoragePath = path.join(instancePath, 'storage');
-
-    const args = [];
-    const env = { ...process.env };
 
     console.log(`Launching ${starboundExecutable}`);
 
     try {
         const gameProcess = spawn(starboundExecutable, [], {
-            cwd: instance.clientPath, // Run from the instance's client directory
-            env: env,
-            detached: true, // Detach the child process from the parent
-            stdio: 'ignore' // Ignore stdio to prevent blocking the main process
+            cwd: instance.clientPath,
+            detached: true,
+            stdio: 'ignore'
         });
 
-        gameProcess.unref(); // Allow the parent process to exit independently
+        gameProcess.unref();
 
         dialog.showMessageBox(BrowserWindow.getAllWindows()[0], {
             type: 'info',
@@ -607,7 +644,7 @@ ipcMain.handle('delete-instance', async (event, instanceName) => {
 
     try {
         if (fs.existsSync(instancePath)) {
-            fse.removeSync(instancePath); // Use fse.removeSync for recursive deletion
+            fse.removeSync(instancePath);
             console.log(`Instance directory ${instancePath} deleted.`);
         }
 
@@ -640,7 +677,7 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
 
     try {
         if (fs.existsSync(modPath)) {
-            fse.removeSync(modPath); // Use fse.removeSync for recursive deletion
+            fse.removeSync(modPath);
             console.log(`Mod directory ${modPath} deleted.`);
         }
 

@@ -5,6 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+
+    "dist": "electron-builder --publish never",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -21,5 +23,34 @@
     "fs-extra": "^11.3.0",
     "tar-fs": "^3.1.0",
     "yauzl": "^3.2.0"
+  },
+  "build": {
+    "appId": "com.yourcompany.starbase",
+    "productName": "Starbase Launcher",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "inputDialog.html",
+      "inputDialog-renderer.js",
+      "workshop.html",
+      "workshop-renderer.js",
+      "setup.html",
+      "styles.css",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }
