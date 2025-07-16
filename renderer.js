@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', () => {
     const newInstanceButton = document.getElementById('new-instance-button');
     const instanceList = document.getElementById('instance-list');
     const instanceDetails = document.getElementById('instance-details');
@@ -66,13 +66,43 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             modsList.innerHTML = '<p>No mods installed for this instance.</p>';
         }
+    }
 
-        // Add event listeners for the new buttons
-        document.getElementById('launch-game-btn').addEventListener('click', () => {
+    instanceList.addEventListener('click', (event) => {
+        const target = event.target;
+        if (target.tagName === 'LI') {
+            selectedInstanceName = target.dataset.instanceName;
+            loadInstances(); // Reload to update the active state and details
+        }
+    });
+
+    instanceDetails.addEventListener('click', async (event) => {
+        const target = event.target;
+        const modId = target.dataset.modId;
+
+        if (target.classList.contains('mod-toggle')) {
+            const enabled = target.checked;
+            await window.electronAPI.updateModStatus(selectedInstanceName, modId, enabled);
+            loadInstances(); // Refresh to show updated status
+        }
+
+        if (target.classList.contains('delete-mod-btn')) {
+            const confirm = await window.electronAPI.openInputDialog({
+                title: 'Confirm Deletion',
+                message: `Are you sure you want to delete this mod?`,
+                isConfirmation: true
+            });
+            if (confirm && !confirm.canceled) {
+                await window.electronAPI.deleteMod(selectedInstanceName, modId);
+                loadInstances(); // Refresh the list
+            }
+        }
+
+        if (target.id === 'launch-game-btn') {
             window.electronAPI.launchGame(selectedInstanceName);
-        });
+        }
 
-        document.getElementById('delete-instance-btn').addEventListener('click', async () => {
+        if (target.id === 'delete-instance-btn') {
             const confirm = await window.electronAPI.openInputDialog({
                 title: 'Confirm Deletion',
                 message: `Are you sure you want to delete the instance '${selectedInstanceName}'? This action cannot be undone.`,
@@ -83,38 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectedInstanceName = null; // Reset selection
                 loadInstances();
             }
-        });
-
-        modsList.addEventListener('click', async (event) => {
-            const target = event.target;
-            const modId = target.dataset.modId;
-
-            if (target.classList.contains('mod-toggle')) {
-                const enabled = target.checked;
-                await window.electronAPI.updateModStatus(selectedInstanceName, modId, enabled);
-                // We don't need to reload the entire instance list here, but it's simpler for now
-                loadInstances(); 
-            }
-
-            if (target.classList.contains('delete-mod-btn')) {
-                const confirm = await window.electronAPI.openInputDialog({
-                    title: 'Confirm Deletion',
-                    message: `Are you sure you want to delete this mod?`,
-                    isConfirmation: true
-                });
-                if (confirm && !confirm.canceled) {
-                    await window.electronAPI.deleteMod(selectedInstanceName, modId);
-                    loadInstances(); // Refresh the list
-                }
-            }
-        });
-    }
-
-    instanceList.addEventListener('click', (event) => {
-        const target = event.target;
-        if (target.tagName === 'LI') {
-            selectedInstanceName = target.dataset.instanceName;
-            loadInstances(); // Reload to update the active state and details
         }
     });
 
@@ -161,7 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Listen for updates from the main process (e.g., after a mod download)
     window.electronAPI.onInstanceUpdate(loadInstances);
 
     // Initial load
