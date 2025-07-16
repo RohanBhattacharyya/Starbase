@@ -1,71 +1,75 @@
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
-    const modList = document.getElementById('mod-list');
-    let currentInstanceName = null; // To store the instance name passed from the main window
+    const searchResults = document.getElementById('mod-list');
+    let instanceName = '';
 
-    // Listen for the instance name from the main process
-    window.ipcRenderer.on('set-instance-name', (event, instanceName) => {
-        currentInstanceName = instanceName;
-        console.log(`Workshop window received instance name: ${currentInstanceName}`);
+    // Use the correct, dedicated API for the workshop window
+    window.workshopAPI.onSetInstanceName((name) => {
+        instanceName = name;
+        document.getElementById('instance-name-header').textContent = `Mod Manager for ${name}`;
     });
 
     searchButton.addEventListener('click', async () => {
-        const query = searchInput.value;
-        if (query) {
-            modList.innerHTML = '<p>Searching for mods...</p>';
-            try {
-                const mods = await window.electronAPI.searchWorkshop(query);
-                if (mods.length > 0) {
-                    modList.innerHTML = ''; // Clear previous message
-                    mods.forEach(mod => displayMod(mod));
-                } else {
-                    modList.innerHTML = '<p>No mods found for your search.</p>';
-                }
-            } catch (error) {
-                modList.innerHTML = `<p>Error searching for mods: ${error.message}</p>`;
-                console.error('Error searching workshop:', error);
+        const query = searchInput.value.trim();
+        if (!query) return;
+
+        searchResults.innerHTML = '<div class="loading-spinner"></div>';
+
+        try {
+            // Use the main electronAPI for searching
+            const mods = await window.electronAPI.searchWorkshop(query);
+            searchResults.innerHTML = '';
+
+            if (mods.length === 0) {
+                searchResults.innerHTML = '<p>No mods found.</p>';
+                return;
             }
+
+            mods.forEach(mod => {
+                const modElement = document.createElement('div');
+                modElement.className = 'mod-item';
+                modElement.innerHTML = `
+                    <img src="${mod.imageUrl}" alt="${mod.name}" class="mod-image">
+                    <div class="mod-info">
+                        <h3 class="mod-name">${mod.name}</h3>
+                        <p class="mod-id">ID: ${mod.id}</p>
+                        <button class="download-mod-button" data-mod-id="${mod.id}" data-mod-name="${mod.name}">Download</button>
+                    </div>
+                `;
+                searchResults.appendChild(modElement);
+            });
+
+        } catch (error) {
+            searchResults.innerHTML = '<p>Search failed. Please try again.</p>';
+            console.error('Workshop search failed:', error);
         }
     });
 
-    function displayMod(mod) {
-        const modCard = document.createElement('div');
-        modCard.classList.add('mod-card');
-        modCard.innerHTML = `
-            <img src="${mod.imageUrl}" alt="${mod.name}">
-            <div class="mod-card-content">
-                <h3>${mod.name}</h3>
-                <p>${mod.description}</p>
-            </div>
-            <div class="mod-card-actions">
-                <button data-mod-id="${mod.id}" class="download-mod-button">Download</button>
-            </div>
-        `;
-        modList.appendChild(modCard);
-
-        modCard.querySelector('.download-mod-button').addEventListener('click', async (event) => {
+    searchResults.addEventListener('click', async (event) => {
+        if (event.target.classList.contains('download-mod-button')) {
             const modId = event.target.dataset.modId;
-            if (!currentInstanceName) {
-                alert('Please select an instance in the main window before downloading mods.');
-                return;
-            }
-            event.target.disabled = true;
-            event.target.textContent = 'Downloading...';
+            const modName = event.target.dataset.modName;
+            const button = event.target;
+
+            button.textContent = 'Downloading...';
+            button.disabled = true;
+
             try {
-                const success = await window.electronAPI.downloadMod(modId, currentInstanceName);
+                // Pass all necessary info to the main process
+                const success = await window.electronAPI.downloadMod({ modId, modName, instanceName });
                 if (success) {
-                    event.target.textContent = 'Downloaded!';
-                    event.target.style.backgroundColor = '#28a745'; // Green
+                    button.textContent = 'Downloaded';
+                    button.classList.add('downloaded');
                 } else {
-                    event.target.textContent = 'Failed';
-                    event.target.style.backgroundColor = '#dc3545'; // Red
+                    button.textContent = 'Error';
+                    button.classList.add('error');
                 }
             } catch (error) {
-                event.target.textContent = 'Error';
-                event.target.style.backgroundColor = '#dc3545'; // Red
-                console.error('Error downloading mod:', error);
+                button.textContent = 'Error';
+                button.classList.add('error');
+                console.error('Mod download failed:', error);
             }
-        });
-    }
+        }
+    });
 });
