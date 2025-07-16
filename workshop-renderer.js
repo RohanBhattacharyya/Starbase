@@ -3,11 +3,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchButton = document.getElementById('search-button');
     const searchResults = document.getElementById('mod-list');
     let instanceName = '';
+    let installedMods = [];
 
     // Use the correct, dedicated API for the workshop window
     window.workshopAPI.onSetInstanceName((name) => {
         instanceName = name;
         document.getElementById('instance-name-header').textContent = `Mod Manager for ${name}`;
+    });
+
+    window.workshopAPI.onSetInstalledMods((mods) => {
+        installedMods = mods;
+        // Re-render search results if they are already displayed to update button states
+        if (searchResults.innerHTML !== '<p>No mods found.</p>' && searchResults.innerHTML !== '<div class="loading-spinner"></div>') {
+            // Trigger a re-search with the current query to update button states
+            searchButton.click();
+        }
     });
 
     searchButton.addEventListener('click', async () => {
@@ -27,6 +37,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             mods.forEach(mod => {
+                const isInstalled = installedMods.some(installedMod => installedMod.id === mod.id);
+                const buttonText = isInstalled ? 'Installed' : 'Download';
+                const buttonClass = isInstalled ? 'download-mod-button installed' : 'download-mod-button';
+                const buttonDisabled = isInstalled ? 'disabled' : '';
+
                 const modElement = document.createElement('div');
                 modElement.className = 'mod-item';
                 modElement.innerHTML = `
@@ -34,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="mod-info">
                         <h3 class="mod-name">${mod.name}</h3>
                         <p class="mod-id">ID: ${mod.id}</p>
-                        <button class="download-mod-button" data-mod-id="${mod.id}" data-mod-name="${mod.name}">Download</button>
+                        <button class="${buttonClass}" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>${buttonText}</button>
                     </div>
                 `;
                 searchResults.appendChild(modElement);
