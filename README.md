@@ -35,11 +35,11 @@ npm install
 
 ### 3. Build the Application
 
-To build the application, you can use `electron-builder`. You can embed your Steam Web API Key during the build process so that users of your built application do not need to enter it manually. This key will be securely embedded and will not be discoverable by end-users.
+To build the application, you can use `electron-builder`. A `prebuild.js` script is used to handle the embedding of the Steam Web API Key, ensuring it's included in the compiled application without being exposed in plain text.
 
 #### Building with an Embedded Steam Web API Key (Recommended)
 
-To embed your Steam Web API Key, set the `STARBASE_STEAM_API_KEY` environment variable before running the build command:
+To embed your Steam Web API Key, set the `STARBASE_STEAM_API_KEY` environment variable before running the build command. The `prebuild.js` script will automatically detect this variable, encode the key, and embed it into the application. This means the end-user will not need to manually enter an API key.
 
 ```bash
 STARBASE_STEAM_API_KEY="YOUR_STEAM_WEB_API_KEY" npm run dist
@@ -49,7 +49,7 @@ Replace `"YOUR_STEAM_WEB_API_KEY"` with your actual Steam Web API Key. You can o
 
 #### Building Without an Embedded Steam Web API Key
 
-If you do not wish to embed a key, users will be prompted to enter their own Steam Web API Key the first time they attempt to browse the Steam Workshop.
+If you do not wish to embed a key, simply run the build command without setting the `STARBASE_STEAM_API_KEY` environment variable. Users will be prompted to enter their own Steam Web API Key the first time they attempt to browse the Steam Workshop.
 
 ```bash
 npm run dist
