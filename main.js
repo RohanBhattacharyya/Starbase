@@ -219,6 +219,10 @@ ipcMain.handle('is-steamcmd-downloaded', async () => {
 });
 
 ipcMain.handle('open-workshop-window', (event, instanceName) => {
+    const instances = store.get('instances', []);
+    const instance = instances.find(inst => inst.name === instanceName);
+    const installedMods = instance ? instance.mods : [];
+
     const workshopWindow = new BrowserWindow({
         width: 900,
         height: 700,
@@ -231,6 +235,7 @@ ipcMain.handle('open-workshop-window', (event, instanceName) => {
     workshopWindow.loadFile('workshop.html');
     workshopWindow.webContents.on('did-finish-load', () => {
         workshopWindow.webContents.send('set-instance-name', instanceName);
+        workshopWindow.webContents.send('set-installed-mods', installedMods);
     });
 });
 
