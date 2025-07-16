@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://steamcdn-a.akamaihd.net">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://steamcdn-a.akamaihd.net *.steamstatic.com *.steamusercontent.com https://images.steamusercontent.com;">
     <title>Steam Workshop Browser</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #1e1e1e; color: #d4d4d4; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -14,8 +14,8 @@
         .search-bar button:hover { background-color: #005a9e; }
         .content { flex-grow: 1; overflow-y: auto; padding: 20px; }
         .mod-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .mod-card { background-color: #252526; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
-        .mod-card img { width: 100%; height: 150px; object-fit: cover; }
+        .mod-item { background-color: #252526; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+        .mod-item img { width: 100%; height: 150px; object-fit: cover; border-radius: 8px 8px 0 0; }
         .mod-card-content { padding: 15px; }
         .mod-card-content h3 { margin-top: 0; font-size: 18px; }
         .mod-card-content p { font-size: 14px; color: #a0a0a0; }

@@ -29,7 +29,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
 // A separate, dedicated API for the Workshop window
 contextBridge.exposeInMainWorld('workshopAPI', {
-  onSetInstanceName: (callback) => ipcRenderer.on('set-instance-name', (_event, name) => callback(name))
+  onSetInstanceName: (callback) => ipcRenderer.on('set-instance-name', (_event, name) => callback(name)),
+  onSetInstalledMods: (callback) => ipcRenderer.on('set-installed-mods', (_event, mods) => callback(mods))
 });
 
 // A separate, dedicated API for the custom Input Dialog window
