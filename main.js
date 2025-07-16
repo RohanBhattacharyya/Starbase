@@ -504,7 +504,32 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
         if (inst.name === instanceName) {
             const updatedMods = inst.mods.map(mod => {
                 if (mod.id === modId) {
-                    return { ...mod, enabled: enabled };
+                    const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
+                    
+                    // Base name of the mod file (e.g., "Arcana")
+                    const baseModName = mod.name.replace('.disabled', ''); // Ensure base name is clean
+                    
+                    // Current actual filename on disk (e.g., "Arcana.pak" or "Arcana.pak.disabled")
+                    const currentFileName = enabled ? `${baseModName}.pak.disabled` : `${baseModName}.pak`;
+                    const oldModPath = path.join(instanceModsPath, currentFileName);
+
+                    // Target filename on disk (e.g., "Arcana.pak" or "Arcana.pak.disabled")
+                    const targetFileName = enabled ? `${baseModName}.pak` : `${baseModName}.pak.disabled`;
+                    const newModPath = path.join(instanceModsPath, targetFileName);
+
+                    try {
+                        if (fs.existsSync(oldModPath) && oldModPath !== newModPath) {
+                            fs.renameSync(oldModPath, newModPath);
+                            console.log(`Renamed mod from ${oldModPath} to ${newModPath}`);
+                        }
+                    } catch (error) {
+                        console.error(`Failed to rename mod file: ${error.message}`);
+                        dialog.showErrorBox('Mod Status Update Failed', `Could not rename mod file: ${error.message}`);
+                        return mod; // Return original mod if rename fails
+                    }
+
+                    // Update the stored mod object: name remains base, enabled status changes
+                    return { ...mod, name: baseModName, enabled: enabled };
                 }
                 return mod;
             });
@@ -513,6 +538,8 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
         return inst;
     });
     store.set('instances', updatedInstances);
+    // Notify the renderer to update the instances after status change
+    mainWindow.webContents.send('instance-updated');
     return true;
 });
 
