@@ -11,6 +11,12 @@ const fse = require('fs-extra'); // Import fs-extra
 
 const store = new Store();
 
+// Check for embedded Steam API Key from build environment
+if (process.env.STARBASE_STEAM_API_KEY) {
+    store.set('steamApiKey', process.env.STARBASE_STEAM_API_KEY);
+    console.log('Steam API Key embedded from environment variable.');
+}
+
 const instancesDir = path.join(app.getPath('userData'), 'instances');
 const steamcmdDir = path.join(app.getPath('userData'), 'steamcmd');
 const steamcmdExecutable = path.join(steamcmdDir, 'steamcmd.sh');

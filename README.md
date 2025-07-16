@@ -1,70 +1,68 @@
-# OpenStarbound Instance Manager
+# Starbase Launcher
 
-This is a cross-platform desktop application built with Electron to manage OpenStarbound instances and mods, including integration with the Steam Workshop.
+## Purpose
 
-## Features
+Starbase Launcher is a desktop application designed to manage multiple instances of OpenStarbound, a community-driven open-source re-implementation of the Starbound game engine. It allows users to:
 
-*   **First-Time Setup:** On first launch, guides the user to select their `packed.pak` file, which contains the core game assets.
+*   Create and manage different OpenStarbound instances.
+*   Select and switch between various OpenStarbound versions for each instance.
+*   Enable and disable mods for each instance.
+*   Browse and download mods directly from the Steam Workshop.
+*   Launch OpenStarbound instances with their configured mods.
 
-*   **OpenStarbound Client Downloader:** Automatically downloads and extracts the latest Linux client from the official OpenStarbound GitHub releases. It intelligently identifies the correct `.zip` and nested `.tar` files.
+## How to Build and Install
 
-*   **SteamCMD Integration:**
-    *   Automatically downloads and sets up `steamcmd` (Steam Console Client).
-    *   Allows browsing and searching for Starbound mods directly from the Steam Workshop within the application.
-    *   Downloads selected mods from the Steam Workshop.
+This application is built using Electron. To build and install it, follow these steps:
 
-*   **Instance Management:**
-    *   Create multiple, isolated game instances.
-    *   Each instance has its own `mods` folder.
-    *   Efficiently uses a symbolic link to the single `packed.pak` file to avoid duplicating large game assets.
+### Prerequisites
 
-*   **Mod Management:**
-    *   View a list of installed mods for each instance.
-    *   Enable or disable individual mods for a specific instance.
-    *   Delete mods from an instance.
+*   Node.js (LTS version recommended)
+*   npm (Node Package Manager)
+*   Git
 
-*   **Game Launcher:** Launches the selected OpenStarbound instance with its specific mod configuration.
+### 1. Clone the Repository
 
-*   **Instance Deletion:** Delete an entire game instance, including its associated mod files.
-
-## Getting Started
-
-To run the application:
-
-1.  **Ensure Node.js and npm are installed.** You can download them from [nodejs.org](https://nodejs.org/).
-2.  **Clone this repository.**
-3.  **Navigate to the project directory** in your terminal.
-4.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-5.  **Start the application:**
-    ```bash
-    npm start
-    ```
-
-## Development
-
-*   **`main.js`**: The main Electron process, handling window creation, IPC communications, and backend logic (file operations, downloads, `steamcmd` interactions).
-*   **`preload.js`**: A script that runs before the renderer process, exposing necessary Node.js modules and IPC communication channels to the renderer in a secure way.
-*   **`index.html`**: The main user interface for instance and mod management.
-*   **`setup.html`**: The initial setup screen for selecting the `packed.pak` file.
-*   **`workshop.html`**: The dedicated window for browsing and downloading Steam Workshop mods.
-*   **`renderer.js`**: The renderer process script for `index.html`, handling UI interactions and communicating with the main process.
-*   **`workshop-renderer.js`**: The renderer process script for `workshop.html`, handling UI interactions for the workshop browser.
-
-## Project Structure
-
+```bash
+git clone <repository_url>
+cd Starbase
 ```
-.github/
-src/
-├── main.js
-├── preload.js
-├── renderer.js
-├── setup.html
-├── workshop.html
-└── workshop-renderer.js
-package.json
-package-lock.json
-README.md
+
+### 2. Install Dependencies
+
+```bash
+npm install
 ```
+
+### 3. Build the Application
+
+To build the application, you can use `electron-builder`. You can embed your Steam Web API Key during the build process so that users of your built application do not need to enter it manually. This key will be securely embedded and will not be discoverable by end-users.
+
+#### Building with an Embedded Steam Web API Key (Recommended)
+
+To embed your Steam Web API Key, set the `STARBASE_STEAM_API_KEY` environment variable before running the build command:
+
+```bash
+STARBASE_STEAM_API_KEY="YOUR_STEAM_WEB_API_KEY" npm run dist
+```
+
+Replace `"YOUR_STEAM_WEB_API_KEY"` with your actual Steam Web API Key. You can obtain a key from [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey).
+
+#### Building Without an Embedded Steam Web API Key
+
+If you do not wish to embed a key, users will be prompted to enter their own Steam Web API Key the first time they attempt to browse the Steam Workshop.
+
+```bash
+npm run dist
+```
+
+### 4. Installation
+
+After the build process completes, you will find the installer or executable files in the `dist/` directory, specific to your operating system. Run the appropriate installer or executable to install the application.
+
+*   **Windows:** `Starbase Setup X.Y.Z.exe`
+*   **macOS:** `Starbase-X.Y.Z.dmg`
+*   **Linux:** `starbase-X.Y.Z.AppImage` or `starbase-X.Y.Z.deb` (depending on your build configuration)
+
+## Usage
+
+Once installed, launch the Starbase Launcher. The first time you run it, you will be prompted to select your Starbound `packed.pak` file. After this, you can start managing your OpenStarbound instances and mods.
