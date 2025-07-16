@@ -36,11 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span>OpenStarbound Version: ${selectedInstance.version}</span>
             </div>
             <div class="instance-controls">
-                <button id="launch-game-btn">Launch Game</button>
-                <button id="delete-instance-btn">Delete Instance</button>
+                <button id="launch-game-btn" class="primary"><i class="fas fa-play"></i> Launch Game</button>
+                <button id="delete-instance-btn" class="danger"><i class="fas fa-trash"></i> Delete Instance</button>
             </div>
             <div class="mods-section">
-                <h2>Mods</h2>
+                <h2><i class="fas fa-puzzle-piece"></i> Mods</h2>
                 <div id="mods-list"></div>
             </div>
         `;
@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <input type="checkbox" class="mod-toggle" data-mod-id="${mod.id}" ${mod.enabled ? 'checked' : ''}>
                             <span class="slider round"></span>
                         </label>
-                        <button class="delete-mod-btn" data-mod-id="${mod.id}">Delete</button>
+                        <button class="delete-mod-btn danger" data-mod-id="${mod.id}"><i class="fas fa-trash"></i> Delete</button>
                     </div>
                 `;
                 modsList.appendChild(modElement);

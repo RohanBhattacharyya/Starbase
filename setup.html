@@ -2,48 +2,15 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src https://cdnjs.cloudflare.com;">
     <title>Setup</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
-            text-align: center;
-        }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-        p {
-            font-size: 16px;
-            margin-bottom: 30px;
-        }
-        button {
-            padding: 12px 24px;
-            font-size: 16px;
-            color: #ffffff;
-            background-color: #007acc;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-        button:hover {
-            background-color: #005a9e;
-        }
-    </style>
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
     <h1>Welcome to OpenStarbound Manager</h1>
     <p>To get started, please select your Starbound `packed.pak` file.</p>
-    <button id="select-pak-button">Select packed.pak</button>
+    <button id="select-pak-button" class="primary"><i class="fas fa-folder-open"></i> Select packed.pak</button>
     <script src="./renderer.js"></script>
 </body>
 </html>

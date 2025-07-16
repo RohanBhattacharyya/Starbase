@@ -39,17 +39,20 @@ document.addEventListener('DOMContentLoaded', () => {
             mods.forEach(mod => {
                 const isInstalled = installedMods.some(installedMod => installedMod.id === mod.id);
                 const buttonText = isInstalled ? 'Installed' : 'Download';
-                const buttonClass = isInstalled ? 'download-mod-button installed' : 'download-mod-button';
+                const buttonClass = isInstalled ? 'download-mod-button installed' : 'download-mod-button primary';
+                const buttonIcon = isInstalled ? '<i class="fas fa-check"></i>' : '<i class="fas fa-download"></i>';
                 const buttonDisabled = isInstalled ? 'disabled' : '';
 
                 const modElement = document.createElement('div');
-                modElement.className = 'mod-item';
+                modElement.className = 'mod-card';
                 modElement.innerHTML = `
                     <img src="${mod.imageUrl}" alt="${mod.name}" class="mod-image">
-                    <div class="mod-info">
+                    <div class="mod-card-content">
                         <h3 class="mod-name">${mod.name}</h3>
                         <p class="mod-id">ID: ${mod.id}</p>
-                        <button class="${buttonClass}" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>${buttonText}</button>
+                    </div>
+                    <div class="mod-card-actions">
+                        <button class="${buttonClass}" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>${buttonIcon} ${buttonText}</button>
                     </div>
                 `;
                 searchResults.appendChild(modElement);
