@@ -1,2 +1,4 @@
 .aider*
 build
+dist/
+node_modules/
