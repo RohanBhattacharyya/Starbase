@@ -537,23 +537,10 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
     const args = [];
     const env = { ...process.env };
 
-    // Set the Starbound assets path to the instance's assets folder
-    env.STARBOUND_ASSET_SOURCE = instanceAssetsPath;
-    env.STARBOUND_PATH = instancePath; // Set STARBOUND_PATH to the instance root
-
-    // Add enabled mods to the command line arguments
-    if (instance.mods && instance.mods.length > 0) {
-        const enabledMods = instance.mods.filter(mod => mod.enabled);
-        if (enabledMods.length > 0) {
-            const modPaths = enabledMods.map(mod => path.join(instanceModsPath, mod.name));
-            args.push(`--mods=${modPaths.join(',')}`);
-        }
-    }
-
-    console.log(`Launching ${starboundExecutable} with args: ${args.join(' ')} and env: STARBOUND_ASSET_SOURCE=${env.STARBOUND_ASSET_SOURCE}, STARBOUND_PATH=${env.STARBOUND_PATH}`);
+    console.log(`Launching ${starboundExecutable}`);
 
     try {
-        const gameProcess = spawn(starboundExecutable, args, {
+        const gameProcess = spawn(starboundExecutable, [], {
             cwd: instance.clientPath, // Run from the instance's client directory
             env: env,
             detached: true, // Detach the child process from the parent
