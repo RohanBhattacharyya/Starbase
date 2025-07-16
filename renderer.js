@@ -50,8 +50,9 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedInstance.mods.forEach(mod => {
                 const modElement = document.createElement('div');
                 modElement.className = 'mod-item';
+                const displayName = mod.enabled ? mod.name : `${mod.name} (Disabled)`;
                 modElement.innerHTML = `
-                    <span class="mod-name">${mod.name} (ID: ${mod.id})</span>
+                    <span class="mod-name">${displayName} (ID: ${mod.id})</span>
                     <div class="mod-controls">
                         <label class="switch">
                             <input type="checkbox" class="mod-toggle" data-mod-id="${mod.id}" ${mod.enabled ? 'checked' : ''}>
