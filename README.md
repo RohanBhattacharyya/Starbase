@@ -10,6 +10,12 @@ Starbase Launcher is a desktop application designed to manage multiple instances
 *   Browse and download mods directly from the Steam Workshop.
 *   Launch OpenStarbound instances with their configured mods.
 
+> [!NOTE]
+> This was made using Gemini CLI!
+
+> [!WARNING]  
+> This has only been tested on Arch Linux!
+
 ## How to Build and Install
 
 This application is built using Electron. To build and install it, follow these steps:
