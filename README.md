@@ -1,4 +1,5 @@
 # Starbase Launcher
+<img width="2556" height="1600" alt="image" src="https://github.com/user-attachments/assets/91e91845-70d1-4f26-bc00-3b8ad2e5c7b4" />
 
 ## Purpose
 
@@ -15,6 +16,7 @@ Starbase Launcher is a desktop application designed to manage multiple instances
 
 > [!WARNING]  
 > This has only been tested on Arch Linux!
+<img width="2556" height="1590" alt="image(1)" src="https://github.com/user-attachments/assets/651bdfe6-40b9-4d02-92f8-dc4edc19dfe1" />
 
 ## How to Build and Install
 
