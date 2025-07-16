@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (selectedInstanceName) {
             window.electronAPI.openWorkshopWindow(selectedInstanceName);
         } else {
-            window.electronAPI.openInputDialog({ title: 'No Instance Selected', message: 'Please select an instance from the list before browsing the workshop.', isConfirmation: false });
+            window.electronAPI.openInputDialog({ title: 'No Instance Selected', message: 'Please select an instance from the list before browsing the workshop.', isConfirmation: true });
         }
     });
 
