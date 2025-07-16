@@ -1,0 +1,414 @@
+
+:root {
+    --bg-primary: #1e1e1e;
+    --bg-secondary: #252526;
+    --bg-tertiary: #333333;
+    --text-primary: #d4d4d4;
+    --text-secondary: #a0a0a0;
+    --accent-blue: #007acc;
+    --accent-blue-hover: #005a9e;
+    --accent-green: #4caf50;
+    --accent-green-hover: #45a049;
+    --accent-red: #e53935;
+    --accent-red-hover: #c62828;
+    --border-color: #3e3e42;
+    --border-radius: 8px;
+    --spacing-sm: 10px;
+    --spacing-md: 15px;
+    --spacing-lg: 20px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* General Button Styles */
+button {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 14px;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.3s ease, transform 0.1s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+button:hover {
+    transform: translateY(-1px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+button.primary {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+button.primary:hover {
+    background-color: var(--accent-blue-hover);
+}
+
+button.secondary {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+button.secondary:hover {
+    background-color: var(--border-color);
+}
+
+button.danger {
+    background-color: var(--accent-red);
+    color: white;
+}
+
+button.danger:hover {
+    background-color: var(--accent-red-hover);
+}
+
+/* Input Field Styles */
+input[type="text"],
+select {
+    width: 100%;
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    box-sizing: border-box;
+    transition: border-color 0.3s ease;
+}
+
+input[type="text"]:focus,
+select:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+/* Dialog Specific Styles */
+body.dialog-body h1 {
+    font-size: 18px; /* Smaller font size for dialog titles */
+    text-align: center;
+    width: 100%;
+}
+
+body.dialog-body #dialog-message {
+    font-size: 14px; /* Smaller font size for dialog messages */
+    text-align: center;
+    width: 100%;
+    margin-bottom: var(--spacing-md);
+}
+
+/* Header Styles */
+header {
+    background-color: var(--bg-secondary);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+}
+
+header h1 {
+    margin: 0;
+    font-size: 20px;
+    color: var(--text-primary);
+}
+
+/* Main Content Area */
+.content {
+    flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: auto; /* Allow horizontal scrolling */
+    padding: var(--spacing-lg);
+    display: flex;
+    gap: var(--spacing-lg);
+}
+
+/* Instance List (Left Panel) */
+.instance-list-panel {
+    flex-basis: 250px;
+    flex-shrink: 0;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    overflow-y: auto;
+}
+
+.instance-list-panel h2 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.instance-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.instance-list li {
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    margin-bottom: 5px;
+}
+
+.instance-list li:last-child {
+    margin-bottom: 0;
+}
+
+.instance-list li:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.instance-list li.active {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+/* Instance Details (Right Panel) */
+.instance-details-panel {
+    flex-grow: 1;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    overflow-y: auto;
+}
+
+.instance-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.instance-header h1 {
+    font-size: 24px;
+    margin: 0;
+}
+
+.instance-header span {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.instance-controls {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.mods-section h2 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    font-size: 18px;
+    color: var(--text-primary);
+}
+
+#mods-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.mod-item {
+    background-color: var(--bg-tertiary);
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mod-item .mod-name {
+    flex-grow: 1;
+}
+
+.mod-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border-color);
+    transition: .4s;
+    border-radius: 20px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--accent-green);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--accent-green);
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+/* Workshop Browser Specific Styles */
+.search-bar {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-grow: 1;
+}
+
+.search-bar input {
+    margin-bottom: 0; /* Override general input margin */
+}
+
+.mod-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center; /* or flex-start, depending on desired alignment */
+    gap: var(--spacing-lg);
+    /* Removed width: 100%; */
+}
+
+.mod-card {
+    background-color: var(--bg-tertiary);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+    width: 250px; /* Fixed width for the card */
+    flex-shrink: 0;
+}
+
+.mod-card:hover {
+    transform: translateY(-3px);
+}
+
+.mod-card img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: var(--border-radius) var(--border-radius) 0 0;
+}
+
+.mod-card-content {
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+}
+
+.mod-card-content h3 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    font-size: 18px;
+    color: var(--text-primary);
+}
+
+.mod-card-content p {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.mod-card-actions {
+    padding: var(--spacing-md);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.mod-card-actions button {
+    background-color: var(--accent-green);
+    color: white;
+}
+
+.mod-card-actions button:hover {
+    background-color: var(--accent-green-hover);
+}
+
+.mod-card-actions button.installed {
+    background-color: var(--text-secondary);
+    cursor: not-allowed;
+}
+
+.mod-card-actions button.installed:hover {
+    background-color: var(--text-secondary);
+    transform: none;
+}
+
+.empty-state {
+    text-align: center;
+    padding: var(--spacing-lg);
+    color: var(--text-secondary);
+    width: 100%;
+}
+
+.loading-spinner {
+    border: 4px solid var(--border-color);
+    border-top: 4px solid var(--accent-blue);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: var(--spacing-lg) auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
