@@ -11,10 +11,19 @@ const fse = require('fs-extra');
 
 const store = new Store();
 
-// Check for embedded Steam API Key from build environment
-if (process.env.STARBASE_STEAM_API_KEY) {
-    store.set('steamApiKey', process.env.STARBASE_STEAM_API_KEY);
-    console.log('Steam API Key embedded from environment variable.');
+// Load embedded API key if it exists
+try {
+    const configPath = path.join(__dirname, 'build', 'config.json');
+    if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.apiKey) {
+            const decodedKey = Buffer.from(config.apiKey, 'base64').toString('utf-8');
+            store.set('steamApiKey', decodedKey);
+            console.log('Embedded Steam API Key has been loaded.');
+        }
+    }
+} catch (error) {
+    console.error('Could not load the embedded API key:', error);
 }
 
 const instancesDir = path.join(app.getPath('userData'), 'instances');
@@ -196,9 +205,9 @@ function createWindow () {
   });
 
   if (!store.get('packedPakPath')) {
-    mainWindow.loadFile('setup.html');
+    mainWindow.loadFile(path.join(__dirname, 'setup.html'));
   } else {
-    mainWindow.loadFile('index.html');
+    mainWindow.loadFile(path.join(__dirname, 'index.html'));
   }
 }
 
@@ -336,7 +345,7 @@ function showInputDialog(options) {
             }
         });
 
-        inputDialogWindow.loadFile('inputDialog.html');
+        inputDialogWindow.loadFile(path.join(__dirname, 'inputDialog.html'));
 
         inputDialogWindow.once('ready-to-show', () => {
             inputDialogWindow.show();

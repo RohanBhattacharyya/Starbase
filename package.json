@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
 
-    "dist": "electron-builder --publish never",
+    "dist": "node prebuild.js && electron-builder --publish never",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -37,8 +37,10 @@
       "workshop.html",
       "workshop-renderer.js",
       "setup.html",
+      "setup-renderer.js",
       "styles.css",
-      "package.json"
+      "package.json",
+      "build/config.json"
     ],
     "directories": {
       "output": "dist"
