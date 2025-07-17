@@ -13,8 +13,8 @@ window.addEventListener('DOMContentLoaded', () => {
         instanceList.innerHTML = '';
         instances.forEach(instance => {
             const instanceElement = document.createElement('li');
-            instanceElement.textContent = instance.name;
             instanceElement.dataset.instanceName = instance.name;
+            instanceElement.innerHTML = `<i class="fas ${instance.icon || 'fa-rocket'}"></i> ${instance.name}`;
             if (instance.name === selectedInstanceName) {
                 instanceElement.classList.add('active');
             }
@@ -33,7 +33,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
         instanceDetails.innerHTML = `
             <div class="instance-header">
-                <h1>${selectedInstance.name}</h1>
+                <h1><i class="fas ${selectedInstance.icon || 'fa-rocket'}"></i> ${selectedInstance.name} <button id="edit-instance-btn" class="secondary small"><i class="fas fa-edit"></i> Edit</button></h1>
+                <p class="instance-description">${selectedInstance.description ? selectedInstance.description : 'No description provided.'}</p>
                 <span>OpenStarbound Version: ${selectedInstance.version}</span>
             </div>
             <div class="instance-controls">
@@ -133,6 +134,32 @@ window.addEventListener('DOMContentLoaded', () => {
                 logSection.style.display = 'none';
             }
         }
+
+        if (target.id === 'edit-instance-btn') {
+            const currentInstance = instances.find(inst => inst.name === selectedInstanceName);
+            const result = await window.electronAPI.openInputDialog({
+                title: 'Edit Instance',
+                message: 'Edit instance name and description:',
+                placeholder: 'Instance Name',
+                value: currentInstance.name,
+                descriptionPlaceholder: 'Optional Description',
+                descriptionValue: currentInstance.description || '',
+                isEdit: true,
+                icon: currentInstance.icon || 'fa-rocket'
+            });
+
+            if (result && !result.canceled) {
+                const newName = result.value;
+                const newDescription = result.description || '';
+                if (newName && (newName !== currentInstance.name || newDescription !== currentInstance.description || result.icon !== currentInstance.icon)) {
+                    const success = await window.electronAPI.updateInstance(selectedInstanceName, newName, newDescription, result.icon);
+                    if (success) {
+                        selectedInstanceName = newName; // Update selected instance name if name changed
+                        loadInstances();
+                    }
+                }
+            }
+        }
     });
 
     newInstanceButton.addEventListener('click', async () => {
@@ -146,17 +173,21 @@ window.addEventListener('DOMContentLoaded', () => {
 
             const instanceNameAndVersionResult = await window.electronAPI.openInputDialog({
                 title: 'New Instance',
-                message: 'Enter a name for your new instance and select a version:',
+                message: 'Enter a name for your new instance, an optional description, and select a version:',
                 placeholder: 'Instance Name',
-                versions: versions.map(v => ({ name: v.name, tag: v.tag }))
+                descriptionPlaceholder: 'Optional Description',
+                versions: versions.map(v => ({ name: v.name, tag: v.tag })),
+                icon: 'fa-rocket' // Default icon for new instance
             });
 
             if (instanceNameAndVersionResult && !instanceNameAndVersionResult.canceled) {
                 const instanceName = instanceNameAndVersionResult.value;
+                const instanceDescription = instanceNameAndVersionResult.description || ''; // Get description
                 const selectedVersion = instanceNameAndVersionResult.version;
+                const instanceIcon = instanceNameAndVersionResult.icon; // Get icon
 
                 if (instanceName && selectedVersion) {
-                    const success = await window.electronAPI.createInstance({ value: instanceName, version: selectedVersion });
+                    const success = await window.electronAPI.createInstance({ value: instanceName, description: instanceDescription, version: selectedVersion, icon: instanceIcon });
                     if (success) {
                         selectedInstanceName = instanceName; // Select the new instance
                         loadInstances();

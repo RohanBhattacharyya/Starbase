@@ -210,6 +210,22 @@ header h1 {
 .instance-header h1 {
     font-size: 24px;
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.instance-header h1 button.small {
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 5px;
+}
+
+.instance-description {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    margin-bottom: 10px;
 }
 
 .instance-header span {
@@ -411,4 +427,75 @@ input:checked + .slider:before {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Icon Picker Specific Styles */
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 10px;
+    padding: 10px;
+    max-height: 300px; /* Limit height for scrolling */
+    overflow-y: auto;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    margin-bottom: 15px;
+}
+
+.icon-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.icon-card:hover {
+    background-color: var(--bg-tertiary);
+    border-color: var(--accent-blue);
+}
+
+.icon-card.selected {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+    color: white;
+}
+
+.icon-card.selected i,
+.icon-card.selected p {
+    color: white;
+}
+
+.icon-card i {
+    font-size: 2em;
+    margin-bottom: 5px;
+    color: var(--text-primary);
+}
+
+.icon-card p {
+    font-size: 0.8em;
+    text-align: center;
+    word-break: break-all;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* Buttons in dialogs */
+.dialog-body .buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 10px;
+}
+
+.dialog-body .search-bar {
+    margin-bottom: 15px;
+}
+
+.dialog-body .search-bar input {
+    margin-bottom: 0;
 }
