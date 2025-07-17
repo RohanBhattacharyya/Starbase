@@ -38,7 +38,12 @@ window.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="instance-controls">
                 <button id="launch-game-btn" class="primary"><i class="fas fa-play"></i> Launch Game</button>
+                <button id="log-btn" class="secondary"><i class="fas fa-file-alt"></i> Log</button>
                 <button id="delete-instance-btn" class="danger"><i class="fas fa-trash"></i> Delete Instance</button>
+            </div>
+            <div id="log-section" class="log-section" style="display: none;">
+                <h2><i class="fas fa-file-alt"></i> Game Log</h2>
+                <pre id="log-content"></pre>
             </div>
             <div class="mods-section">
                 <h2><i class="fas fa-puzzle-piece"></i> Mods</h2>
@@ -116,6 +121,18 @@ window.addEventListener('DOMContentLoaded', () => {
                 loadInstances();
             }
         }
+
+        if (target.id === 'log-btn') {
+            const logSection = document.getElementById('log-section');
+            const logContent = document.getElementById('log-content');
+            if (logSection.style.display === 'none') {
+                logSection.style.display = 'block';
+                const log = await window.electronAPI.getLog(selectedInstanceName);
+                logContent.textContent = log;
+            } else {
+                logSection.style.display = 'none';
+            }
+        }
     });
 
     newInstanceButton.addEventListener('click', async () => {
@@ -174,6 +191,13 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     window.electronAPI.onInstanceUpdate(loadInstances);
+
+    window.electronAPI.onLogUpdate((log) => {
+        const logContent = document.getElementById('log-content');
+        if (logContent) {
+            logContent.textContent = log;
+        }
+    });
 
     // Initial load
     loadInstances();
