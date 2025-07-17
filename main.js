@@ -43,8 +43,14 @@ async function downloadAndExtractClient(versionTag, instancePath) {
         const response = await axios.get(releaseUrl);
         const release = response.data;
 
-        const asset = release.assets.find(a => a.name.toLowerCase().includes('linux') && a.name.toLowerCase().includes('client'));
-        if (!asset) throw new Error(`No Linux client asset found in release ${versionTag}.`);
+        let asset;
+        if (process.platform === 'win32') {
+            asset = release.assets.find(a => a.name.toLowerCase().includes('windows') && a.name.toLowerCase().includes('client'));
+            if (!asset) throw new Error(`No Windows client asset found in release ${versionTag}.`);
+        } else { // linux
+            asset = release.assets.find(a => a.name.toLowerCase().includes('linux') && a.name.toLowerCase().includes('client'));
+            if (!asset) throw new Error(`No Linux client asset found in release ${versionTag}.`);
+        }
 
         console.log(`Downloading ${asset.name}...`);
         const assetResponse = await axios({ url: asset.browser_download_url, method: 'GET', responseType: 'stream' });
@@ -56,38 +62,71 @@ async function downloadAndExtractClient(versionTag, instancePath) {
         });
 
         console.log('Download complete. Extracting zip...');
-        await new Promise((resolve, reject) => {
-            yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
-                if (err) return reject(err);
-                zipfile.readEntry();
-                zipfile.on('entry', (entry) => {
-                    if (entry.fileName.includes('client.tar')) {
-                        console.log('Found client.tar. Extracting tarball...');
-                        zipfile.openReadStream(entry, (err, readStream) => {
-                            if (err) return reject(err);
-                            const extract = tar.extract(instancePath, {
-                                map: (header) => {
-                                    header.name = header.name.replace(/^client_distribution\//, '');
-                                    return header;
-                                }
+        if (process.platform === 'win32') {
+            await new Promise((resolve, reject) => {
+                yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
+                    if (err) return reject(err);
+                    zipfile.readEntry();
+                    zipfile.on('entry', (entry) => {
+                        // Extract all files, but specifically look for starbound.exe to determine the base path
+                        const targetPath = path.join(instancePath, entry.fileName.replace(/^OpenStarbound-Client-Windows\//, ''));
+                        if (/\/$/.test(entry.fileName)) {
+                            // Directory
+                            fse.ensureDirSync(targetPath);
+                            zipfile.readEntry();
+                        } else {
+                            // File
+                            zipfile.openReadStream(entry, (err, readStream) => {
+                                if (err) return reject(err);
+                                fse.ensureDirSync(path.dirname(targetPath)); // Ensure directory exists
+                                const writeStream = fs.createWriteStream(targetPath);
+                                readStream.pipe(writeStream);
+                                writeStream.on('finish', () => zipfile.readEntry());
+                                writeStream.on('error', reject);
                             });
-                            readStream.pipe(extract);
-                            extract.on('finish', () => {
-                                console.log('Extraction complete.');
-                                zipfile.close();
-                                resolve();
-                            });
-                            extract.on('error', reject);
-                        });
-                    } else {
-                        zipfile.readEntry();
-                    }
-                });
-                zipfile.on('end', () => {
-                    // This might be reached if client.tar is not found
+                        }
+                    });
+                    zipfile.on('end', () => {
+                        console.log('Windows client extraction complete.');
+                        resolve();
+                    });
+                    zipfile.on('error', reject);
                 });
             });
-        });
+        } else { // Linux extraction
+            await new Promise((resolve, reject) => {
+                yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
+                    if (err) return reject(err);
+                    zipfile.readEntry();
+                    zipfile.on('entry', (entry) => {
+                        if (entry.fileName.includes('client.tar')) {
+                            console.log('Found client.tar. Extracting tarball...');
+                            zipfile.openReadStream(entry, (err, readStream) => {
+                                if (err) return reject(err);
+                                const extract = tar.extract(instancePath, {
+                                    map: (header) => {
+                                        header.name = header.name.replace(/^client_distribution\//, '');
+                                        return header;
+                                    }
+                                });
+                                readStream.pipe(extract);
+                                extract.on('finish', () => {
+                                    console.log('Linux client extraction complete.');
+                                    zipfile.close();
+                                    resolve();
+                                });
+                                extract.on('error', reject);
+                            });
+                        } else {
+                            zipfile.readEntry();
+                        }
+                    });
+                    zipfile.on('end', () => {
+                        // This might be reached if client.tar is not found
+                    });
+                });
+            });
+        }
 
         fs.unlinkSync(downloadPath); // Clean up the downloaded zip
         return instancePath;
@@ -614,7 +653,12 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         return false;
     }
 
-    const starboundExecutable = path.join(instance.clientPath, 'linux', 'starbound');
+    let starboundExecutable;
+    if (process.platform === 'win32') {
+        starboundExecutable = path.join(instance.clientPath, 'win', 'starbound.exe');
+    } else { // linux
+        starboundExecutable = path.join(instance.clientPath, 'linux', 'starbound');
+    }
     if (!fs.existsSync(starboundExecutable)) {
         dialog.showErrorBox('Error', 'OpenStarbound executable not found. Please ensure the client is downloaded for this instance.');
         return false;
@@ -668,6 +712,31 @@ ipcMain.handle('delete-instance', async (event, instanceName) => {
 });
 
 ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
+    // ... existing delete-mod logic ...
+});
+
+ipcMain.handle('open-instance-folder', async (event, instanceName) => {
+    const instances = store.get('instances', []);
+    const instance = instances.find(inst => inst.name === instanceName);
+
+    if (!instance) {
+        dialog.showErrorBox('Error', `Instance '${instanceName}' not found.`);
+        return false;
+    }
+
+    const instancePath = path.join(instancesDir, instanceName);
+
+    try {
+        await shell.openPath(instancePath);
+        return true;
+    } catch (error) {
+        console.error('Failed to open instance folder:', error);
+        dialog.showErrorBox('Error', `Could not open folder for instance '${instanceName}'.`);
+        return false;
+    }
+});
+
+ipcMain.handle('check-for-openstarbound-update', async () => {
     const instances = store.get('instances', []);
     const instance = instances.find(inst => inst.name === instanceName);
 
@@ -727,4 +796,3 @@ ipcMain.handle('check-for-openstarbound-update', async () => {
         return { updateAvailable: false, latestVersion: null, error: error.message };
     }
 });
-
