@@ -672,8 +672,14 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         const gameProcess = spawn(starboundExecutable, [], {
             cwd: instance.clientPath,
             detached: true,
-            stdio: 'ignore'
+            stdio: 'pipe'
         });
+
+        const logPath = path.join(instance.clientPath, 'logs', 'starbound.log');
+        const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+
+        gameProcess.stdout.pipe(logStream);
+        gameProcess.stderr.pipe(logStream);
 
         gameProcess.unref();
 
@@ -683,11 +689,32 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
             message: `Launching OpenStarbound instance: ${instanceName}`,
             buttons: ['OK']
         });
+
+        fs.watchFile(logPath, () => {
+            const logContent = fs.readFileSync(logPath, 'utf-8');
+            mainWindow.webContents.send('log-updated', logContent);
+        });
+
         return true;
     } catch (error) {
         console.error('Failed to launch game:', error);
         dialog.showErrorBox('Game Launch Failed', error.message);
         return false;
+    }
+});
+
+ipcMain.handle('get-log', async (event, instanceName) => {
+    const instances = store.get('instances', []);
+    const instance = instances.find(inst => inst.name === instanceName);
+    if (!instance) {
+        return 'Instance not found.';
+    }
+
+    const logPath = path.join(instance.clientPath, 'logs', 'starbound.log');
+    if (fs.existsSync(logPath)) {
+        return fs.readFileSync(logPath, 'utf-8');
+    } else {
+        return 'Log file not found.';
     }
 });
 

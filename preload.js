@@ -17,6 +17,8 @@ const electronAPI = {
   selectPak: () => ipcRenderer.invoke('select-pak'),
   openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
   importMods: (instanceName, folderPath) => ipcRenderer.invoke('import-mods', instanceName, folderPath),
+  getLog: (instanceName) => ipcRenderer.invoke('get-log', instanceName),
+  onLogUpdate: (callback) => ipcRenderer.on('log-updated', (event, log) => callback(log)),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
