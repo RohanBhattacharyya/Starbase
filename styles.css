@@ -177,10 +177,6 @@ header h1 {
     margin-bottom: 0;
 }
 
-.instance-list li:hover {
-    background-color: var(--bg-tertiary);
-}
-
 .instance-list li.active {
     background-color: var(--accent-blue);
     color: white;
@@ -501,4 +497,45 @@ input:checked + .slider:before {
     width: calc(100% - 20px); /* Adjust for padding/margin */
     height: 38px; /* Fixed height */
     box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+/* Custom Checkbox Styles */
+.mod-checkbox {                                                       
+    appearance: none;                                                 
+    -webkit-appearance: none;                                         
+    -moz-appearance: none;                                            
+    width: 20px;                                                      
+    height: 20px;                                                     
+    border: 2px solid var(--border-color);                            
+    border-radius: 4px;                                               
+    background-color: var(--bg-secondary);                            
+    cursor: pointer;                                                  
+    position: relative;                                               
+    transition: background-color 0.2s, border-color 0.2s;             
+}                                                                     
+.mod-checkbox:checked {                                               
+    background-color: var(--accent-blue);                             
+    border-color: var(--accent-blue);                                 
+}                                                                     
+
+.mod-checkbox:checked::after {                                        
+    content: '\2713'; /* Checkmark character */                       
+    font-size: 14px;                                                  
+    color: white;                                                     
+    position: absolute;                                               
+    top: 50%;                                                         
+    left: 50%;                                                        
+    transform: translate(-50%, -50%);                                 
+}                                                                     
+.mod-checkbox:disabled {                                              
+    background-color: var(--bg-tertiary);                             
+    border-color: var(--border-color);                                
+    cursor: not-allowed;                                              
+    opacity: 0.6;                                                     
+}                                                                     
+.mod-checkbox:disabled:checked::after {                               
+    color: var(--text-secondary);                                     
+}  
+
+.instance-list li:hover {
+    background-color: var(--bg-tertiary);
 }
