@@ -13,6 +13,7 @@ const electronAPI = {
   openWorkshopWindow: (instanceName) => ipcRenderer.invoke('open-workshop-window', instanceName),
   searchWorkshop: (query) => ipcRenderer.invoke('search-workshop', query),
   downloadMod: (args) => ipcRenderer.invoke('download-mod', args),
+  downloadMods: (modsToDownload, instanceName) => ipcRenderer.invoke('download-mods', modsToDownload, instanceName),
   openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options),
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
   selectPak: () => ipcRenderer.invoke('select-pak'),
@@ -28,7 +29,8 @@ contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 
 contextBridge.exposeInMainWorld('workshopAPI', {
   onSetInstanceName: (callback) => ipcRenderer.on('set-instance-name', (_event, name) => callback(name)),
-  onSetInstalledMods: (callback) => ipcRenderer.on('set-installed-mods', (_event, mods) => callback(mods))
+  onSetInstalledMods: (callback) => ipcRenderer.on('set-installed-mods', (_event, mods) => callback(mods)),
+  onDownloadStatusUpdate: (callback) => ipcRenderer.on('download-status-update', (_event, status) => callback(status))
 });
 
 contextBridge.exposeInMainWorld('inputDialogAPI', {

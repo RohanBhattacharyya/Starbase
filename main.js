@@ -11,6 +11,219 @@ const fse = require('fs-extra');
 
 const store = new Store();
 
+let activeDownloads = 0;
+const downloadQueue = [];
+let totalModsToDownload = 0;
+const failedDownloads = [];
+const retryQueue = [];
+const MAX_RETRIES = 5;
+
+// Function to send download status updates to the workshop window
+function updateDownloadStatus() {
+    if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('download-status-update', {
+            active: activeDownloads,
+            total: totalModsToDownload
+        });
+    }
+    // Also send to workshop window if it's open
+    const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
+    if (workshopWindow && workshopWindow.webContents) {
+        workshopWindow.webContents.send('download-status-update', {
+            active: activeDownloads,
+            total: totalModsToDownload
+        });
+    }
+}
+
+// Refactored mod download logic
+async function performModDownload(modId, modName, instanceName) {
+    if (!fs.existsSync(steamcmdExecutable)) {
+        throw new Error('SteamCMD executable not found. Please ensure it was installed correctly.');
+    }
+
+    const instancePath = path.join(instancesDir, instanceName);
+    const instanceModsPath = path.join(instancePath, 'mods');
+    
+    const workshopDir = getSteamWorkshopDirectory();
+    const downloadedModPath = path.join(workshopDir, 'content', '211820', modId);
+    const fallbackModPath = path.join(steamcmdDir, 'steamapps', 'workshop', 'content', '211820', modId);
+
+    try {
+        fs.chmodSync(steamcmdExecutable, '755');
+
+        console.log(`Downloading mod ${modId} using steamcmd...`);
+        await new Promise((resolve, reject) => {
+            const steamcmdProcess = spawn(steamcmdExecutable, [
+                '+force_install_dir', steamcmdDir,
+                '+login', 'anonymous',
+                '+workshop_download_item', '211820', modId,
+                '+quit'
+            ]);
+
+            steamcmdProcess.stdout.on('data', (data) => {
+                console.log(`steamcmd: ${data}`);
+            });
+
+            steamcmdProcess.stderr.on('data', (data) => {
+                console.error(`steamcmd stderr: ${data}`);
+            });
+
+            steamcmdProcess.on('close', (code) => {
+                if (code !== 0) {
+                    console.error(`steamcmd process exited with code ${code}`);
+                    return reject(new Error(`SteamCMD process for mod ${modName} (${modId}) exited with code ${code}. Check SteamCMD logs for details.`));
+                }
+                console.log(`steamcmd process finished. Checking for downloaded files.`);
+                resolve();
+            });
+            steamcmdProcess.on('error', (err) => reject(new Error(`Failed to spawn SteamCMD process for mod ${modName} (${modId}): ${err.message}`))); // Catch spawn errors
+        });
+
+        let finalModPath;
+        console.log(`Checking for mod at primary path: ${downloadedModPath}`);
+        if (fs.existsSync(downloadedModPath)) {
+            finalModPath = downloadedModPath;
+        } else {
+            console.log(`Mod not found at primary path. Checking fallback: ${fallbackModPath}`);
+            if (fs.existsSync(fallbackModPath)) {
+                finalModPath = fallbackModPath;
+            }
+        }
+
+        if (!finalModPath) {
+            throw new Error(`Downloaded mod files not found for ${modName} (${modId}) at expected paths.`);
+        }
+
+        console.log(`Found mod directory at: ${finalModPath}`);
+
+        // --- NEW LOGIC: Search for .pak files ---
+        let pakFile = null;
+        const filesInDownloadedDir = fs.readdirSync(finalModPath);
+        for (const file of filesInDownloadedDir) {
+            if (file.endsWith('.pak')) {
+                pakFile = path.join(finalModPath, file);
+                break; // Found a .pak file, take the first one
+            }
+        }
+
+        if (!pakFile) {
+            // If no .pak file found in the root, check one level deeper (common for some mods)
+            for (const file of filesInDownloadedDir) {
+                const subDirPath = path.join(finalModPath, file);
+                if (fs.statSync(subDirPath).isDirectory()) {
+                    const filesInSubDir = fs.readdirSync(subDirPath);
+                    for (const subFile of filesInSubDir) {
+                        if (subFile.endsWith('.pak')) {
+                            pakFile = path.join(subDirPath, subFile);
+                            break;
+                        }
+                    }
+                }
+                if (pakFile) break;
+            }
+        }
+
+        if (!pakFile) {
+            throw new Error(`No .pak file found in the downloaded mod folder for ${modName} (${modId}): ${finalModPath}. This mod might have a different structure or failed to download correctly.`);
+        }
+        // --- END NEW LOGIC ---
+
+        const destinationPath = path.join(instanceModsPath, `${modName}.pak`);
+        
+        fse.moveSync(pakFile, destinationPath, { overwrite: true });
+        console.log(`Moved ${pakFile} to ${destinationPath}`);
+
+        // Update the store with the new mod
+        const instances = store.get('instances', []);
+        const updatedInstances = instances.map(inst => {
+            if (inst.name === instanceName) {
+                const mods = inst.mods || [];
+                if (!mods.some(m => m.id === modId)) {
+                    return { ...inst, mods: [...mods, { id: modId, name: modName, enabled: true }] };
+                }
+            }
+            return inst;
+        });
+        store.set('instances', updatedInstances);
+
+        // Send updated installed mods to the workshop window
+        const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
+        if (workshopWindow) {
+            const currentInstance = updatedInstances.find(inst => inst.name === instanceName);
+            if (currentInstance) {
+                workshopWindow.webContents.send('set-installed-mods', currentInstance.mods);
+            }
+        }
+        
+        fse.remove(finalModPath).catch(err => console.error(`Failed to clean up mod directory: ${err}`));
+
+        return true;
+
+    } catch (error) {
+        console.error('Failed to download or move mod:', error);
+        throw error; // Re-throw to be caught by processDownloadQueue
+    }
+}
+
+// Process the download queue with a concurrency limit
+const MAX_CONCURRENT_DOWNLOADS = 3; // Limit concurrent downloads
+
+async function processDownloadQueue() {
+    while ((downloadQueue.length > 0 || retryQueue.length > 0) && activeDownloads < MAX_CONCURRENT_DOWNLOADS) {
+        let modToDownload;
+        if (downloadQueue.length > 0) {
+            modToDownload = downloadQueue.shift();
+            modToDownload.attempts = 0; // Initialize attempts for new downloads
+        } else if (retryQueue.length > 0) {
+            modToDownload = retryQueue.shift();
+        } else {
+            break; // No mods to download or retry
+        }
+
+        const { modId, modName, instanceName, attempts } = modToDownload;
+
+        activeDownloads++;
+        updateDownloadStatus();
+        console.log(`Starting download for ${modName} (${modId}). Attempt: ${attempts + 1}. Active downloads: ${activeDownloads}`);
+
+        performModDownload(modId, modName, instanceName)
+            .then(() => {
+                console.log(`Successfully downloaded ${modName}`);
+            })
+            .catch(err => {
+                console.error(`Error during download of ${modName}:`, err);
+                if (attempts < MAX_RETRIES) {
+                    console.log(`Retrying download for ${modName}. Attempt ${attempts + 1} of ${MAX_RETRIES}.`);
+                    retryQueue.push({ modId, modName, instanceName, attempts: attempts + 1 });
+                } else {
+                    console.error(`Max retries reached for ${modName}. Marking as failed.`);
+                    failedDownloads.push({ modId, modName, instanceName, error: err.message });
+                }
+            })
+            .finally(() => {
+                activeDownloads--;
+                updateDownloadStatus();
+                // Trigger main window UI update after each mod download completes
+                mainWindow.webContents.send('instance-updated');
+                processDownloadQueue(); // Try to process next item in queue
+            });
+    }
+    if (downloadQueue.length === 0 && retryQueue.length === 0 && activeDownloads === 0) {
+        totalModsToDownload = 0; // Reset total when all done
+        updateDownloadStatus(); // Send final status
+
+        if (failedDownloads.length > 0) {
+            const failedModNames = failedDownloads.map(mod => mod.modName).join(', ');
+            dialog.showErrorBox(
+                'Mod Download Failed',
+                `The following mods failed to download after ${MAX_RETRIES} attempts: ${failedModNames}. Please check the console for more details.`
+            );
+            failedDownloads.length = 0; // Clear failed downloads after reporting
+        }
+    }
+}
+
 // Load embedded API key if it exists
 try {
     const configPath = path.join(__dirname, 'build', 'config.json');
@@ -565,96 +778,21 @@ ipcMain.handle('search-workshop', async (event, query) => {
 });
 
 ipcMain.handle('download-mod', async (event, { modId, modName, instanceName }) => {
-    if (!fs.existsSync(steamcmdExecutable)) {
-        dialog.showErrorBox('Error', 'SteamCMD executable not found. Please ensure it was installed correctly.');
-        return false;
-    }
+    downloadQueue.push({ modId, modName, instanceName });
+    totalModsToDownload++;
+    updateDownloadStatus();
+    processDownloadQueue();
+    return true;
+});
 
-    const instancePath = path.join(instancesDir, instanceName);
-    const instanceModsPath = path.join(instancePath, 'mods');
-    
-    const workshopDir = getSteamWorkshopDirectory();
-    const downloadedModPath = path.join(workshopDir, 'content', '211820', modId);
-    const fallbackModPath = path.join(steamcmdDir, 'steamapps', 'workshop', 'content', '211820', modId);
-
-    try {
-        fs.chmodSync(steamcmdExecutable, '755');
-
-        console.log(`Downloading mod ${modId} using steamcmd...`);
-        await new Promise((resolve, reject) => {
-            const steamcmdProcess = spawn(steamcmdExecutable, [
-                '+force_install_dir', steamcmdDir,
-                '+login', 'anonymous',
-                '+workshop_download_item', '211820', modId,
-                '+quit'
-            ]);
-
-            steamcmdProcess.stdout.on('data', (data) => {
-                console.log(`steamcmd: ${data}`);
-            });
-
-            steamcmdProcess.stderr.on('data', (data) => {
-                console.error(`steamcmd stderr: ${data}`);
-            });
-
-            steamcmdProcess.on('close', (code) => {
-                if (code !== 0) {
-                    console.error(`steamcmd process exited with code ${code}`);
-                }
-                console.log(`steamcmd process finished. Checking for downloaded files.`);
-                resolve();
-            });
-        });
-
-        let finalModPath;
-        console.log(`Checking for mod at primary path: ${downloadedModPath}`);
-        if (fs.existsSync(downloadedModPath)) {
-            finalModPath = downloadedModPath;
-        } else {
-            console.log(`Mod not found at primary path. Checking fallback: ${fallbackModPath}`);
-            if (fs.existsSync(fallbackModPath)) {
-                finalModPath = fallbackModPath;
-            }
-        }
-
-        if (finalModPath) {
-            console.log(`Found mod at: ${finalModPath}`);
-            const destinationPath = path.join(instanceModsPath, `${modName}.pak`);
-            const sourcePak = path.join(finalModPath, 'contents.pak');
-
-            if (!fs.existsSync(sourcePak)) {
-                 throw new Error(`'contents.pak' not found in the downloaded mod folder: ${finalModPath}`);
-            }
-
-            fse.moveSync(sourcePak, destinationPath, { overwrite: true });
-            console.log(`Moved ${sourcePak} to ${destinationPath}`);
-
-            const instances = store.get('instances', []);
-            const updatedInstances = instances.map(inst => {
-                if (inst.name === instanceName) {
-                    const mods = inst.mods || [];
-                    if (!mods.some(m => m.id === modId)) {
-                        return { ...inst, mods: [...mods, { id: modId, name: modName, enabled: true }] };
-                    }
-                }
-                return inst;
-            });
-            store.set('instances', updatedInstances);
-
-            mainWindow.webContents.send('instance-updated');
-            
-            fse.remove(finalModPath).catch(err => console.error(`Failed to clean up mod directory: ${err}`));
-
-            return true;
-        } else {
-            throw new Error(`Downloaded mod not found at expected paths.`);
-        }
-
-    } catch (error) {
-        console.error('Failed to download or move mod:', error);
-        dialog.showErrorBox('Mod Download Failed', error.message);
-        return false;
-    }
+ipcMain.handle('download-mods', async (event, modsToDownload, instanceName) => {
+    modsToDownload.forEach(mod => {
+        downloadQueue.push({ modId: mod.id, modName: mod.name, instanceName });
+    });
+    totalModsToDownload += modsToDownload.length;
+    updateDownloadStatus();
+    processDownloadQueue();
+    return true;
 });
 
 ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
@@ -694,6 +832,15 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
     });
     store.set('instances', updatedInstances);
     mainWindow.webContents.send('instance-updated');
+
+    // Send updated installed mods to the workshop window
+    const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
+    if (workshopWindow) {
+        const currentInstance = updatedInstances.find(inst => inst.name === instanceName);
+        if (currentInstance) {
+            workshopWindow.webContents.send('set-installed-mods', currentInstance.mods);
+        }
+    }
     return true;
 });
 
@@ -769,6 +916,13 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         });
 
         const logPath = path.join(instance.clientPath, 'logs', 'starbound.log');
+        const logDir = path.dirname(logPath);
+        if (!fs.existsSync(logDir)) {
+            fse.mkdirpSync(logDir);
+        }
+        if (!fs.existsSync(logPath)) {
+            fs.writeFileSync(logPath, ''); // Create empty log file if it doesn't exist
+        }
         const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
         gameProcess.stdout.pipe(logStream);
@@ -878,7 +1032,55 @@ ipcMain.handle('import-mods', async (event, instanceName, folderPath) => {
 });
 
 ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
-    // ... existing delete-mod logic ...
+    const instances = store.get('instances', []);
+    const instanceIndex = instances.findIndex(inst => inst.name === instanceName);
+
+    if (instanceIndex === -1) {
+        dialog.showErrorBox('Error', `Instance '${instanceName}' not found.`);
+        return false;
+    }
+
+    const instance = instances[instanceIndex];
+    const modToDelete = instance.mods.find(mod => mod.id === modId);
+
+    if (!modToDelete) {
+        dialog.showErrorBox('Error', `Mod with ID '${modId}' not found in instance '${instanceName}'.`);
+        return false;
+    }
+
+    const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
+    const modFileName = `${modToDelete.name}.pak`;
+    const modFilePath = path.join(instanceModsPath, modFileName);
+    const disabledModFilePath = path.join(instanceModsPath, `${modToDelete.name}.pak.disabled`);
+
+    try {
+        if (fs.existsSync(modFilePath)) {
+            fse.removeSync(modFilePath);
+            console.log(`Deleted mod file: ${modFilePath}`);
+        } else if (fs.existsSync(disabledModFilePath)) {
+            fse.removeSync(disabledModFilePath);
+            console.log(`Deleted disabled mod file: ${disabledModFilePath}`);
+        }
+
+        const updatedMods = instance.mods.filter(mod => mod.id !== modId);
+        const updatedInstance = { ...instance, mods: updatedMods };
+        const updatedInstances = [...instances];
+        updatedInstances[instanceIndex] = updatedInstance;
+        store.set('instances', updatedInstances);
+        mainWindow.webContents.send('instance-updated');
+
+        // Send updated installed mods to the workshop window
+        const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
+        if (workshopWindow) {
+            workshopWindow.webContents.send('set-installed-mods', updatedMods);
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Failed to delete mod:', error);
+        dialog.showErrorBox('Mod Deletion Failed', error.message);
+        return false;
+    }
 });
 
 ipcMain.handle('open-instance-folder', async (event, instanceName) => {
