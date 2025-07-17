@@ -425,8 +425,8 @@ function showInputDialog(options) {
         }
 
         inputDialogWindow = new BrowserWindow({
-            width: 400,
-            height: 250,
+            width: 500,
+            height: 400,
             parent: parentWindow,
             modal: true,
             show: false,

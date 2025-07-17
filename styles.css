@@ -435,7 +435,7 @@ input:checked + .slider:before {
     grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
     gap: 10px;
     padding: 10px;
-    max-height: 300px; /* Limit height for scrolling */
+    flex-grow: 1;
     overflow-y: auto;
     background-color: var(--bg-secondary);
     border-radius: var(--border-radius);
@@ -498,4 +498,7 @@ input:checked + .slider:before {
 
 .dialog-body .search-bar input {
     margin-bottom: 0;
+    width: calc(100% - 20px); /* Adjust for padding/margin */
+    height: 38px; /* Fixed height */
+    box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
