@@ -15,6 +15,8 @@ const electronAPI = {
   openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options),
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
   selectPak: () => ipcRenderer.invoke('select-pak'),
+  openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
+  importMods: (instanceName, folderPath) => ipcRenderer.invoke('import-mods', instanceName, folderPath),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

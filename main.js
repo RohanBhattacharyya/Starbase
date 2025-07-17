@@ -711,6 +711,52 @@ ipcMain.handle('delete-instance', async (event, instanceName) => {
     }
 });
 
+ipcMain.handle('open-folder-dialog', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+    if (canceled || filePaths.length === 0) return null;
+    return { canceled, filePaths };
+});
+
+ipcMain.handle('import-mods', async (event, instanceName, folderPath) => {
+    const instances = store.get('instances', []);
+    const instance = instances.find(inst => inst.name === instanceName);
+    if (!instance) {
+        dialog.showErrorBox('Error', `Instance '${instanceName}' not found.`);
+        return false;
+    }
+
+    const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
+    const files = fs.readdirSync(folderPath);
+
+    for (const file of files) {
+        if (path.extname(file) === '.pak') {
+            const sourcePath = path.join(folderPath, file);
+            const destPath = path.join(instanceModsPath, file);
+            fs.copyFileSync(sourcePath, destPath);
+
+            let modId = 'ID unknown';
+            try {
+                const buffer = fs.readFileSync(sourcePath);
+                const urlMatch = buffer.toString('utf8').match(/steam:\/\/url\/CommunityFilePage\/(\d+)/);
+                if (urlMatch && urlMatch[1]) {
+                    modId = urlMatch[1];
+                }
+            } catch (error) {
+                console.error(`Error reading ${file}:`, error);
+            }
+
+            const modName = path.basename(file, '.pak');
+            if (!instance.mods.some(m => m.id === modId)) {
+                instance.mods.push({ id: modId, name: modName, enabled: true, imported: true });
+            }
+        }
+    }
+
+    store.set('instances', instances);
+    mainWindow.webContents.send('instance-updated');
+    return true;
+});
+
 ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
     // ... existing delete-mod logic ...
 });

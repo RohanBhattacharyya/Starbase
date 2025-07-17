@@ -3,6 +3,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const instanceList = document.getElementById('instance-list');
     const instanceDetails = document.getElementById('instance-details');
     const browseWorkshopButton = document.getElementById('browse-workshop-button');
+    const importModsButton = document.getElementById('import-mods-button');
 
     let instances = [];
     let selectedInstanceName = null;
@@ -51,8 +52,9 @@ window.addEventListener('DOMContentLoaded', () => {
                 const modElement = document.createElement('div');
                 modElement.className = 'mod-item';
                 const displayName = mod.enabled ? mod.name : `${mod.name} (Disabled)`;
+                const importedStatus = mod.imported ? ' (Imported)' : '';
                 modElement.innerHTML = `
-                    <span class="mod-name">${displayName} (ID: ${mod.id})</span>
+                    <span class="mod-name">${displayName} (ID: ${mod.id})${importedStatus}</span>
                     <div class="mod-controls">
                         <label class="switch">
                             <input type="checkbox" class="mod-toggle" data-mod-id="${mod.id}" ${mod.enabled ? 'checked' : ''}>
@@ -156,6 +158,18 @@ window.addEventListener('DOMContentLoaded', () => {
             window.electronAPI.openWorkshopWindow(selectedInstanceName);
         } else {
             window.electronAPI.openInputDialog({ title: 'No Instance Selected', message: 'Please select an instance from the list before browsing the workshop.', isConfirmation: true });
+        }
+    });
+
+    importModsButton.addEventListener('click', async () => {
+        if (selectedInstanceName) {
+            const result = await window.electronAPI.openFolderDialog();
+            if (result && !result.canceled && result.filePaths.length > 0) {
+                await window.electronAPI.importMods(selectedInstanceName, result.filePaths[0]);
+                loadInstances();
+            }
+        } else {
+            window.electronAPI.openInputDialog({ title: 'No Instance Selected', message: 'Please select an instance from the list before importing mods.', isConfirmation: true });
         }
     });
 
