@@ -31,7 +31,7 @@ This application is built using Electron. To build and install it, follow these 
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository_url>
+git clone https://github.com/RohanBhattacharyya/Starbase.git
 cd Starbase
 ```
 
