@@ -2,7 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const electronAPI = {
   getInstances: () => ipcRenderer.invoke('get-instances'),
-  createInstance: (name, version) => ipcRenderer.invoke('create-instance', name, version),
+  createInstance: (args) => ipcRenderer.invoke('create-instance', args),
+  updateInstance: (oldName, newName, newDescription, newIcon) => ipcRenderer.invoke('update-instance', oldName, newName, newDescription, newIcon),
   deleteInstance: (instanceName) => ipcRenderer.invoke('delete-instance', instanceName),
   launchGame: (instanceName) => ipcRenderer.invoke('launch-game', instanceName),
   getOpenStarboundVersions: () => ipcRenderer.invoke('get-openstarbound-versions'),
@@ -19,6 +20,7 @@ const electronAPI = {
   importMods: (instanceName, folderPath) => ipcRenderer.invoke('import-mods', instanceName, folderPath),
   getLog: (instanceName) => ipcRenderer.invoke('get-log', instanceName),
   onLogUpdate: (callback) => ipcRenderer.on('log-updated', (event, log) => callback(log)),
+  openIconPickerDialog: (currentIcon) => ipcRenderer.invoke('open-icon-picker-dialog', currentIcon),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
@@ -31,4 +33,8 @@ contextBridge.exposeInMainWorld('workshopAPI', {
 contextBridge.exposeInMainWorld('inputDialogAPI', {
   sendResponse: (response) => ipcRenderer.send('dialog-response', response),
   onSetOptions: (callback) => ipcRenderer.on('set-dialog-options', (_event, options) => callback(options))
+});
+
+contextBridge.exposeInMainWorld('iconPickerAPI', {
+  sendSelectedIcon: (iconClass) => ipcRenderer.send('icon-selected', iconClass)
 });

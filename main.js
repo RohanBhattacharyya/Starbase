@@ -275,7 +275,7 @@ ipcMain.handle('select-pak', async () => {
 
 ipcMain.handle('get-instances', async () => store.get('instances', []));
 
-ipcMain.handle('create-instance', async (event, { value: instanceName, version }) => {
+ipcMain.handle('create-instance', async (event, { value: instanceName, description: instanceDescription, version, icon }) => {
     const instances = store.get('instances', []);
     if (instances.some(inst => inst.name === instanceName)) {
         dialog.showErrorBox('Error', 'An instance with this name already exists.');
@@ -305,7 +305,7 @@ ipcMain.handle('create-instance', async (event, { value: instanceName, version }
             throw new Error('packed.pak path is not set.');
         }
 
-        store.set('instances', [...instances, { name: instanceName, version: version.tag, mods: [], clientPath: instancePath }]);
+        store.set('instances', [...instances, { name: instanceName, description: instanceDescription, version: version.tag, icon: icon || 'fa-rocket', mods: [], clientPath: instancePath }]);
         return instanceName;
     } catch (error) {
         console.error('Failed to create instance:', error);
@@ -356,6 +356,59 @@ let inputDialogWindow = null;
 
 ipcMain.handle('open-input-dialog', (event, options) => {
     return showInputDialog(options);
+});
+
+let iconPickerDialogWindow = null;
+
+ipcMain.handle('open-icon-picker-dialog', (event, currentIcon) => {
+    return new Promise((resolve) => {
+        if (iconPickerDialogWindow) {
+            iconPickerDialogWindow.focus();
+            return;
+        }
+
+        const parentWindow = BrowserWindow.getFocusedWindow();
+        if (!parentWindow) {
+            console.error("main.js: Cannot open icon picker dialog, no focused window.");
+            return resolve(null);
+        }
+
+        iconPickerDialogWindow = new BrowserWindow({
+            width: 600,
+            height: 700,
+            parent: parentWindow,
+            modal: true,
+            show: false,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false
+            }
+        });
+
+        iconPickerDialogWindow.loadFile(path.join(__dirname, 'iconPicker.html'));
+
+        iconPickerDialogWindow.once('ready-to-show', () => {
+            iconPickerDialogWindow.show();
+            // Optionally send currentIcon to pre-select it in the picker
+            // iconPickerDialogWindow.webContents.send('set-current-icon', currentIcon);
+        });
+
+        const onIconSelected = (event, iconClass) => {
+            if (iconPickerDialogWindow) {
+                iconPickerDialogWindow.close();
+            }
+            resolve(iconClass);
+        };
+
+        ipcMain.once('icon-selected', onIconSelected);
+
+        iconPickerDialogWindow.on('closed', () => {
+            iconPickerDialogWindow = null;
+            ipcMain.removeListener('icon-selected', onIconSelected);
+            resolve(null); // Resolve with null if dialog is closed without selection
+        });
+    });
 });
 
 function showInputDialog(options) {
@@ -644,6 +697,46 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
     return true;
 });
 
+ipcMain.handle('update-instance', async (event, oldName, newName, newDescription, newIcon) => {
+    console.log(`Attempting to update instance: ${oldName} to ${newName}, desc: ${newDescription}, icon: ${newIcon}`);
+    const instances = store.get('instances', []);
+    const instanceIndex = instances.findIndex(inst => inst.name === oldName);
+
+    if (instanceIndex === -1) {
+        dialog.showErrorBox('Error', `Instance '${oldName}' not found.`);
+        return false;
+    }
+
+    // Check if new name already exists for another instance
+    if (newName !== oldName && instances.some((inst, index) => index !== instanceIndex && inst.name === newName)) {
+        dialog.showErrorBox('Error', `An instance with the name '${newName}' already exists.`);
+        return false;
+    }
+
+    const oldInstancePath = path.join(instancesDir, oldName);
+    const newInstancePath = path.join(instancesDir, newName);
+
+    try {
+        if (oldName !== newName) {
+            if (fs.existsSync(oldInstancePath)) {
+                fse.moveSync(oldInstancePath, newInstancePath);
+                console.log(`Renamed instance directory from ${oldInstancePath} to ${newInstancePath}`);
+            }
+        }
+
+        const updatedInstance = { ...instances[instanceIndex], name: newName, description: newDescription, icon: newIcon };
+        const updatedInstances = [...instances];
+        updatedInstances[instanceIndex] = updatedInstance;
+        store.set('instances', updatedInstances);
+        mainWindow.webContents.send('instance-updated');
+        return true;
+    } catch (error) {
+        console.error('Failed to update instance:', error);
+        dialog.showErrorBox('Instance Update Failed', error.message);
+        return false;
+    }
+});
+
 ipcMain.handle('launch-game', async (event, instanceName) => {
     const instances = store.get('instances', []);
     const instance = instances.find(inst => inst.name === instanceName);
@@ -809,44 +902,7 @@ ipcMain.handle('open-instance-folder', async (event, instanceName) => {
     }
 });
 
-ipcMain.handle('check-for-openstarbound-update', async () => {
-    const instances = store.get('instances', []);
-    const instance = instances.find(inst => inst.name === instanceName);
 
-    if (!instance) {
-        dialog.showErrorBox('Error', `Instance '${instanceName}' not found.`);
-        return false;
-    }
-
-    const modToDelete = instance.mods.find(mod => mod.id === modId);
-    if (!modToDelete) {
-        dialog.showErrorBox('Error', `Mod with ID '${modId}' not found in instance '${instanceName}'.`);
-        return false;
-    }
-
-    const modPath = path.join(instancesDir, instanceName, 'mods', modToDelete.name);
-
-    try {
-        if (fs.existsSync(modPath)) {
-            fse.removeSync(modPath);
-            console.log(`Mod directory ${modPath} deleted.`);
-        }
-
-        const updatedMods = instance.mods.filter(mod => mod.id !== modId);
-        const updatedInstances = instances.map(inst => {
-            if (inst.name === instanceName) {
-                return { ...inst, mods: updatedMods };
-            }
-            return inst;
-        });
-        store.set('instances', updatedInstances);
-        return true;
-    } catch (error) {
-        console.error('Failed to delete mod:', error);
-        dialog.showErrorBox('Mod Deletion Failed', error.message);
-        return false;
-    }
-});
 
 ipcMain.handle('check-for-openstarbound-update', async () => {
     const releaseUrl = 'https://api.github.com/repos/OpenStarbound/OpenStarbound/releases';
