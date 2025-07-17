@@ -21,6 +21,7 @@ const electronAPI = {
   getLog: (instanceName) => ipcRenderer.invoke('get-log', instanceName),
   onLogUpdate: (callback) => ipcRenderer.on('log-updated', (event, log) => callback(log)),
   openIconPickerDialog: (currentIcon) => ipcRenderer.invoke('open-icon-picker-dialog', currentIcon),
+  openInstanceFolder: (instanceName) => ipcRenderer.invoke('open-instance-folder', instanceName),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

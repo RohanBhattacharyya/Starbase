@@ -40,6 +40,7 @@ window.addEventListener('DOMContentLoaded', () => {
             <div class="instance-controls">
                 <button id="launch-game-btn" class="primary"><i class="fas fa-play"></i> Launch Game</button>
                 <button id="log-btn" class="secondary"><i class="fas fa-file-alt"></i> Log</button>
+                <button id="open-folder-btn" class="secondary"><i class="fas fa-folder-open"></i> Open Folder</button>
                 <button id="delete-instance-btn" class="danger"><i class="fas fa-trash"></i> Delete Instance</button>
             </div>
             <div id="log-section" class="log-section" style="display: none;">
@@ -133,6 +134,10 @@ window.addEventListener('DOMContentLoaded', () => {
             } else {
                 logSection.style.display = 'none';
             }
+        }
+
+        if (target.id === 'open-folder-btn') {
+            await window.electronAPI.openInstanceFolder(selectedInstanceName);
         }
 
         if (target.id === 'edit-instance-btn') {
