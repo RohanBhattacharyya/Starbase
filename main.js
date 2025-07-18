@@ -260,7 +260,16 @@ async function downloadAndExtractClient(versionTag, instancePath) {
         if (process.platform === 'win32') {
             asset = release.assets.find(a => a.name.toLowerCase().includes('windows') && a.name.toLowerCase().includes('client'));
             if (!asset) throw new Error(`No Windows client asset found in release ${versionTag}.`);
-        } else { // linux
+        } else if (process.platform === 'darwin') {
+            const arch = process.arch; // 'arm64' for Apple Silicon, 'x64' for Intel
+            asset = release.assets.find(a =>
+                a.name.toLowerCase().includes('macos') &&
+                a.name.toLowerCase().includes('client') &&
+                a.name.toLowerCase().includes(arch === 'arm64' ? 'silicon' : 'intel')
+            );
+            if (!asset) throw new Error(`No macOS client asset found for ${arch} in release ${versionTag}.`);
+        }
+        else { // linux
             asset = release.assets.find(a => a.name.toLowerCase().includes('linux') && a.name.toLowerCase().includes('client'));
             if (!asset) throw new Error(`No Linux client asset found in release ${versionTag}.`);
         }
@@ -304,6 +313,39 @@ async function downloadAndExtractClient(versionTag, instancePath) {
                         resolve();
                     });
                     zipfile.on('error', reject);
+                });
+            });
+        } else if (process.platform === 'darwin') { // macOS extraction
+            await new Promise((resolve, reject) => {
+                yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
+                    if (err) return reject(err);
+                    zipfile.readEntry();
+                    zipfile.on('entry', (entry) => {
+                        if (entry.fileName.includes('client.tar')) {
+                            console.log('Found client.tar. Extracting tarball...');
+                            zipfile.openReadStream(entry, (err, readStream) => {
+                                if (err) return reject(err);
+                                const extract = tar.extract(instancePath, {
+                                    map: (header) => {
+                                        header.name = header.name.replace(/^client_distribution\//, '');
+                                        return header;
+                                    }
+                                });
+                                readStream.pipe(extract);
+                                extract.on('finish', () => {
+                                    console.log('macOS client extraction complete.');
+                                    zipfile.close();
+                                    resolve();
+                                });
+                                extract.on('error', reject);
+                            });
+                        } else {
+                            zipfile.readEntry();
+                        }
+                    });
+                    zipfile.on('end', () => {
+                        // This might be reached if client.tar is not found
+                    });
                 });
             });
         } else { // Linux extraction
@@ -896,6 +938,27 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
     let starboundExecutable;
     if (process.platform === 'win32') {
         starboundExecutable = path.join(instance.clientPath, 'win', 'starbound.exe');
+    } else if (process.platform === 'darwin') {
+        starboundExecutable = path.join(instance.clientPath, 'osx', 'Starbound.app');
+        // Check if the user has disabled Gatekeeper for unsigned apps
+        const gatekeeperCheck = await new Promise(resolve => {
+            const child = spawn('spctl', ['--status']);
+            let output = '';
+            child.stdout.on('data', (data) => { output += data.toString(); });
+            child.on('close', () => {
+                resolve(output.includes('assessments disabled'));
+            });
+        });
+
+        if (!gatekeeperCheck) {
+            dialog.showErrorBox(
+                'Gatekeeper Enabled',
+                'To run OpenStarbound, you need to disable Gatekeeper for unsigned applications. Please open your Terminal and run the following command, then enter your password when prompted:\n\n' +
+                'sudo spctl --master-disable\n\n' +
+                'This is necessary because OpenStarbound is not signed by an identified developer, and macOS Gatekeeper prevents unsigned applications from running by default. Disabling it will allow you to run OpenStarbound and other unsigned applications.'
+            );
+            return false;
+        }
     } else { // linux
         starboundExecutable = path.join(instance.clientPath, 'linux', 'starbound');
     }
@@ -904,16 +967,27 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         return false;
     }
 
-    fs.chmodSync(starboundExecutable, '755');
+    if (process.platform !== 'darwin') {
+        fs.chmodSync(starboundExecutable, '755');
+    }
 
     console.log(`Launching ${starboundExecutable}`);
 
     try {
-        const gameProcess = spawn(starboundExecutable, [], {
-            cwd: instance.clientPath,
-            detached: true,
-            stdio: 'pipe'
-        });
+        let gameProcess;
+        if (process.platform === 'darwin') {
+            gameProcess = spawn('open', ['Starbound.app'], {
+                cwd: path.join(instance.clientPath, 'osx'),
+                detached: true,
+                stdio: 'pipe'
+            });
+        } else {
+            gameProcess = spawn(starboundExecutable, [], {
+                cwd: instance.clientPath,
+                detached: true,
+                stdio: 'pipe'
+            });
+        }
 
         const logPath = path.join(instance.clientPath, 'logs', 'starbound.log');
         const logDir = path.dirname(logPath);
