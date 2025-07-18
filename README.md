@@ -1,5 +1,5 @@
 # Starbase Launcher
-<img width="2556" height="1600" alt="image" src="https://github.com/user-attachments/assets/91e91845-70d1-4f26-bc00-3b8ad2e5c7b4" />
+<img width="1366" height="768" alt="Screenshot_20250717_165727" src="https://github.com/user-attachments/assets/6384f504-3a5d-4b46-8ced-1d2a873de7dc" />
 
 ## Purpose
 
