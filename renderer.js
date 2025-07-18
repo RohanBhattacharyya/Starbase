@@ -192,10 +192,17 @@ window.addEventListener('DOMContentLoaded', () => {
                 const instanceIcon = instanceNameAndVersionResult.icon; // Get icon
 
                 if (instanceName && selectedVersion) {
-                    const success = await window.electronAPI.createInstance({ value: instanceName, description: instanceDescription, version: selectedVersion, icon: instanceIcon });
-                    if (success) {
-                        selectedInstanceName = instanceName; // Select the new instance
-                        loadInstances();
+                    const loadingOverlay = document.getElementById('loadingOverlay');
+                    loadingOverlay.style.display = 'flex'; // Show overlay
+
+                    try {
+                        const success = await window.electronAPI.createInstance({ value: instanceName, description: instanceDescription, version: selectedVersion, icon: instanceIcon });
+                        if (success) {
+                            selectedInstanceName = instanceName; // Select the new instance
+                            loadInstances();
+                        }
+                    } finally {
+                        loadingOverlay.style.display = 'none'; // Hide overlay
                     }
                 } else {
                     console.warn('Instance name or version not provided.');
