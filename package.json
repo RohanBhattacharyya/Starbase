@@ -1,6 +1,6 @@
 {
   "name": "starbase",
-  "version": "1.0.1",
+  "version": "1.2.0",
   "description": "",
   "main": "main.js",
   "scripts": {
@@ -25,7 +25,7 @@
     "yauzl": "^3.2.0"
   },
   "build": {
-    "appId": "com.yourcompany.starbase",
+    "appId": "com.rohan.starbase",
     "productName": "Starbase Launcher",
     "files": [
       "main.js",
