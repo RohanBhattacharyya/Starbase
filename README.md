@@ -12,7 +12,7 @@ Starbase Launcher is a desktop application designed to manage multiple instances
 *   Launch OpenStarbound instances with their configured mods.
 
 > [!NOTE]
-> This was made using Gemini CLI!
+> This was made with help from Gemini CLI (Humans did work too!)
 
 > [!WARNING]  
 > This has only been tested on Arch Linux!
