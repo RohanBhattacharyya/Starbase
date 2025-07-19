@@ -913,7 +913,7 @@ ipcMain.handle('update-instance', async (event, oldName, newName, newDescription
             }
         }
 
-        const updatedInstance = { ...instances[instanceIndex], name: newName, description: newDescription, icon: newIcon };
+        const updatedInstance = { ...instances[instanceIndex], name: newName, description: newDescription, icon: newIcon, clientPath: newInstancePath};
         const updatedInstances = [...instances];
         updatedInstances[instanceIndex] = updatedInstance;
         store.set('instances', updatedInstances);
