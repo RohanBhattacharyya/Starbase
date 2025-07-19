@@ -15,6 +15,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     let instances = [];
     let selectedInstanceName = null;
+    let runningInstances = [];
 
     async function loadInstances() {
         instances = await window.electronAPI.getInstances();
@@ -53,7 +54,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 <button id ="mods-btn" class="secondary"><i class="fas fa-puzzle-piece"></i> Mods</button>
                 <button id ="logs-btn" class="secondary"><i class="fas fa-file-alt"></i> Logs</button>
                 <button id="open-folder-btn" class="secondary"><i class="fas fa-folder-open"></i> Open Folder</button>
-                <button id="delete-instance-btn" class="danger"><i class="fas fa-trash"></i> Delete Instance</button>
+                <button id="delete-instance-btn" class="${runningInstances.includes(selectedInstance.name) ? 'disabled-btn' : 'danger'}" ${runningInstances.includes(selectedInstance.name) ? 'disabled' : ''}><i class="fas fa-trash"></i> Delete Instance</button>
             </div>
             
         `;
@@ -142,13 +143,16 @@ window.addEventListener('DOMContentLoaded', () => {
         }
 
         if (event.target.id === 'launch-game-btn') {
+
             window.electronAPI.launchGame(selectedInstanceName);
+            runningInstances.push(selectedInstanceName);
             document.getElementById('delete-instance-btn').disabled = true;
             document.getElementById('delete-instance-btn').className = "disabled-btn";
 
         }
 
         window.electronAPI.onGameClose(() => {
+            runningInstances = runningInstances.filter(inst => inst !== selectedInstanceName);
             document.getElementById('delete-instance-btn').disabled = false;
             document.getElementById('delete-instance-btn').className = "danger";
 
