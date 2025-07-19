@@ -5,7 +5,6 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-
     "dist": "node prebuild.js && electron-builder --publish never",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -33,6 +32,8 @@
       "renderer.js",
       "index.html",
       "inputDialog.html",
+      "iconPicker-renderer.js",
+      "iconPicker.html",
       "inputDialog-renderer.js",
       "workshop.html",
       "workshop-renderer.js",

@@ -1,7 +1,15 @@
 window.addEventListener('DOMContentLoaded', () => {
     const newInstanceButton = document.getElementById('new-instance-button');
     const instanceList = document.getElementById('instance-list');
+
+
+
     const instanceDetails = document.getElementById('instance-details');
+    const instanceDetailsTop = document.getElementById('instance-details-top');
+    const instanceDetailsBottom = document.getElementById('instance-details-bottom');
+
+
+
     const browseWorkshopButton = document.getElementById('browse-workshop-button');
     const importModsButton = document.getElementById('import-mods-button');
 
@@ -20,18 +28,21 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             instanceList.appendChild(instanceElement);
         });
-        renderInstanceDetails();
+        renderinstanceDetails();
     }
 
-    function renderInstanceDetails() {
+    function renderinstanceDetails() {
         const selectedInstance = instances.find(inst => inst.name === selectedInstanceName);
 
         if (!selectedInstance) {
-            instanceDetails.innerHTML = '<div class="empty-state"><p>Select an instance to see details.</p></div>';
+            instanceDetailsTop.innerHTML = '<div class="empty-state"><p>Select an instance to see details.</p></div>';
+            instanceDetailsBottom.innerHTML = '<div class="empty-state"></div>';
             return;
         }
 
-        instanceDetails.innerHTML = `
+        console.info(instanceDetailsBottom);
+
+        instanceDetailsTop.innerHTML = `
             <div class="instance-header">
                 <h1><i class="fas ${selectedInstance.icon || 'fa-rocket'}"></i> ${selectedInstance.name} <button id="edit-instance-btn" class="secondary small"><i class="fas fa-edit"></i> Edit</button></h1>
                 <p class="instance-description">${selectedInstance.description ? selectedInstance.description : 'No description provided.'}</p>
@@ -39,42 +50,63 @@ window.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="instance-controls">
                 <button id="launch-game-btn" class="primary"><i class="fas fa-play"></i> Launch Game</button>
-                <button id="log-btn" class="secondary"><i class="fas fa-file-alt"></i> Log</button>
+                <button id ="mods-btn" class="secondary"><i class="fas fa-puzzle-piece"></i> Mods</button>
+                <button id ="logs-btn" class="secondary"><i class="fas fa-file-alt"></i> Logs</button>
                 <button id="open-folder-btn" class="secondary"><i class="fas fa-folder-open"></i> Open Folder</button>
                 <button id="delete-instance-btn" class="danger"><i class="fas fa-trash"></i> Delete Instance</button>
             </div>
-            <div id="log-section" class="log-section" style="display: none;">
-                <h2><i class="fas fa-file-alt"></i> Game Log</h2>
-                <pre id="log-content"></pre>
-            </div>
-            <div class="mods-section">
-                <h2><i class="fas fa-puzzle-piece"></i> Mods</h2>
-                <div id="mods-list"></div>
-            </div>
+            
         `;
 
-        const modsList = document.getElementById('mods-list');
-        if (selectedInstance.mods && selectedInstance.mods.length > 0) {
-            selectedInstance.mods.forEach(mod => {
-                const modElement = document.createElement('div');
-                modElement.className = 'mod-item';
-                const displayName = mod.enabled ? mod.name : `${mod.name} (Disabled)`;
-                const importedStatus = mod.imported ? ' (Imported)' : '';
-                modElement.innerHTML = `
-                    <span class="mod-name">${displayName} (ID: ${mod.id})${importedStatus}</span>
-                    <div class="mod-controls">
-                        <label class="switch">
-                            <input type="checkbox" class="mod-toggle" data-mod-id="${mod.id}" ${mod.enabled ? 'checked' : ''}>
-                            <span class="slider round"></span>
-                        </label>
-                        <button class="delete-mod-btn danger" data-mod-id="${mod.id}"><i class="fas fa-trash"></i> Delete</button>
+        // instanceDetailsBottom.innerHTML = `
+        instanceDetailsBottomToAdd = `
+            <div id="tab-content" class="tab-content">
+                <div id="mods-tab" class="tab-pane active">
+                    <div id="mods-list">
+        `;
+        console.info(instanceDetailsBottom);
+
+            if (selectedInstance.mods && selectedInstance.mods.length > 0) {
+                selectedInstance.mods.forEach(mod => {
+
+                    instanceDetailsBottomToAdd += `<div class="mod-item">`;
+                    const displayName = mod.enabled ? mod.name : `${mod.name} (Disabled)`;
+                    const importedStatus = mod.imported ? ' (Imported)' : '';
+
+                    instanceDetailsBottomToAdd += `
+                        <span class="mod-name">${displayName} (ID: ${mod.id})${importedStatus}</span>
+                        <div class="mod-controls">
+                            <label class="switch">
+                                <input type="checkbox" class="mod-toggle" data-mod-id="${mod.id}" ${mod.enabled ? 'checked' : ''}>
+                                <span class="slider round"></span>
+                            </label>
+                            <button class="delete-mod-btn danger" data-mod-id="${mod.id}"><i class="fas fa-trash"></i> Delete</button>
+                        </div>
+                        </div>
+                    `;    
+                });
+                instanceDetailsBottomToAdd += `
                     </div>
-                `;
-                modsList.appendChild(modElement);
-            });
-        } else {
-            modsList.innerHTML = '<p>No mods installed for this instance.</p>';
-        }
+                </div>
+                <div id="logs-tab" class="tab-pane">
+                    <pre id="log-content"></pre>
+                </div>
+            </div>`;
+
+            instanceDetailsBottom.innerHTML = instanceDetailsBottomToAdd;
+            } else {
+                instanceDetailsBottomToAdd += `
+                <p>No Mods Installed!</p>
+                        </div>
+                    </div>
+                    <div id="logs-tab" class="tab-pane">
+                        <pre id="log-content"></pre>
+                    </div>
+                </div>`;
+
+                instanceDetailsBottom.innerHTML = instanceDetailsBottomToAdd;
+            }
+        
     }
 
     instanceList.addEventListener('click', (event) => {
@@ -86,16 +118,29 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     instanceDetails.addEventListener('click', async (event) => {
-        const target = event.target;
-        const modId = target.dataset.modId;
+        // const target = event.target.closest('.tab-btn');
+        // if (target) {
+        //     const tab = target.dataset.tab;
+        //     document.querySelectorAll('.tab-btn, .tab-pane').forEach(el => el.classList.remove('active'));
+        //     target.classList.add('active');
+        //     document.getElementById(`${tab}-tab`).classList.add('active');
 
-        if (target.classList.contains('mod-toggle')) {
-            const enabled = target.checked;
+        //     if (tab === 'logs') {
+                
+        //     }
+        // }
+
+        const modId = event.target.dataset.modId;
+
+
+
+        if (event.target.classList.contains('mod-toggle')) {
+            const enabled = event.target.checked;
             await window.electronAPI.updateModStatus(selectedInstanceName, modId, enabled);
             loadInstances(); // Refresh to show updated status
         }
 
-        if (target.classList.contains('delete-mod-btn')) {
+        if (event.target.classList.contains('delete-mod-btn')) {
             const confirm = await window.electronAPI.openInputDialog({
                 title: 'Confirm Deletion',
                 message: `Are you sure you want to delete this mod?`,
@@ -107,11 +152,11 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (target.id === 'launch-game-btn') {
+        if (event.target.id === 'launch-game-btn') {
             window.electronAPI.launchGame(selectedInstanceName);
         }
 
-        if (target.id === 'delete-instance-btn') {
+        if (event.target.id === 'delete-instance-btn') {
             const confirm = await window.electronAPI.openInputDialog({
                 title: 'Confirm Deletion',
                 message: `Are you sure you want to delete the instance '${selectedInstanceName}'? This action cannot be undone.`,
@@ -124,23 +169,25 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (target.id === 'log-btn') {
-            const logSection = document.getElementById('log-section');
-            const logContent = document.getElementById('log-content');
-            if (logSection.style.display === 'none') {
-                logSection.style.display = 'block';
-                const log = await window.electronAPI.getLog(selectedInstanceName);
-                logContent.textContent = log;
-            } else {
-                logSection.style.display = 'none';
-            }
+        if (event.target.id === 'mods-btn') {
+            document.getElementById(`logs-tab`).classList.remove('active');
+            document.getElementById(`mods-tab`).classList.add('active');
         }
 
-        if (target.id === 'open-folder-btn') {
+        if (event.target.id === 'logs-btn') {
+                document.getElementById(`mods-tab`).classList.remove('active');
+                document.getElementById(`logs-tab`).classList.add('active');
+                const logContent = document.getElementById('log-content');
+                const log = await window.electronAPI.getLog(selectedInstanceName);
+                logContent.textContent = log;
+                logContent.scrollTop = logContent.scrollHeight; // Scroll to bottom
+        }
+
+        if (event.target.id === 'open-folder-btn') {
             await window.electronAPI.openInstanceFolder(selectedInstanceName);
         }
 
-        if (target.id === 'edit-instance-btn') {
+        if (event.target.id === 'edit-instance-btn') {
             const currentInstance = instances.find(inst => inst.name === selectedInstanceName);
             const result = await window.electronAPI.openInputDialog({
                 title: 'Edit Instance',
@@ -239,6 +286,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const logContent = document.getElementById('log-content');
         if (logContent) {
             logContent.textContent = log;
+            logContent.scrollTop = logContent.scrollHeight;
         }
     });
 
