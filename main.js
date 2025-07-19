@@ -1016,6 +1016,11 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
             mainWindow.webContents.send('log-updated', logContent);
         });
 
+        gameProcess.on('close', () => {
+            fs.unwatchFile(logPath);
+            mainWindow.webContents.send('game-closed');
+        });
+
         return true;
     } catch (error) {
         console.error('Failed to launch game:', error);
@@ -1042,9 +1047,11 @@ ipcMain.handle('get-log', async (event, instanceName) => {
 ipcMain.handle('delete-instance', async (event, instanceName) => {
     const instances = store.get('instances', []);
     const instancePath = path.join(instancesDir, instanceName);
+    const logPath = path.join(instancePath, 'logs', 'starbound.log');
 
     try {
         if (fs.existsSync(instancePath)) {
+            fs.unwatchFile(logPath);
             fse.removeSync(instancePath);
             console.log(`Instance directory ${instancePath} deleted.`);
         }

@@ -77,6 +77,11 @@ button.danger:hover {
     background-color: var(--accent-red-hover);
 }
 
+button.disabled-btn {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+
 /* Input Field Styles */
 input[type="text"],
 select {

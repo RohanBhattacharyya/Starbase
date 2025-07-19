@@ -21,6 +21,7 @@ const electronAPI = {
   importMods: (instanceName, folderPath) => ipcRenderer.invoke('import-mods', instanceName, folderPath),
   getLog: (instanceName) => ipcRenderer.invoke('get-log', instanceName),
   onLogUpdate: (callback) => ipcRenderer.on('log-updated', (event, log) => callback(log)),
+  onGameClose: (callback) => ipcRenderer.on('game-closed', () => callback()),
   openIconPickerDialog: (currentIcon) => ipcRenderer.invoke('open-icon-picker-dialog', currentIcon),
   openInstanceFolder: (instanceName) => ipcRenderer.invoke('open-instance-folder', instanceName),
 };
