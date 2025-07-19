@@ -18,6 +18,8 @@ const failedDownloads = [];
 const retryQueue = [];
 const MAX_RETRIES = 5;
 
+const SHOW_MENUBAR = false;
+
 // Function to send download status updates to the workshop window
 function updateDownloadStatus() {
     if (mainWindow && mainWindow.webContents) {
@@ -498,6 +500,8 @@ function createWindow () {
     }
   });
 
+  mainWindow.setMenuBarVisibility(SHOW_MENUBAR);
+
   if (!store.get('packedPakPath')) {
     mainWindow.loadFile(path.join(__dirname, 'setup.html'));
   } else {
@@ -596,6 +600,9 @@ ipcMain.handle('open-workshop-window', (event, instanceName) => {
             nodeIntegration: false
         }
     });
+
+    workshopWindow.setMenuBarVisibility(SHOW_MENUBAR);
+
     workshopWindow.loadFile('workshop.html');
     workshopWindow.webContents.on('did-finish-load', () => {
         workshopWindow.webContents.send('set-instance-name', instanceName);
@@ -640,6 +647,7 @@ ipcMain.handle('open-icon-picker-dialog', (event, currentIcon) => {
                 nodeIntegration: false
             }
         });
+        iconPickerDialogWindow.setMenuBarVisibility(SHOW_MENUBAR);
 
         iconPickerDialogWindow.loadFile(path.join(__dirname, 'iconPicker.html'));
 
@@ -691,6 +699,8 @@ function showInputDialog(options) {
                 nodeIntegration: false
             }
         });
+
+        inputDialogWindow.setMenuBarVisibility(SHOW_MENUBAR);
 
         inputDialogWindow.loadFile(path.join(__dirname, 'inputDialog.html'));
 
@@ -1155,7 +1165,7 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
         if (workshopWindow) {
             workshopWindow.webContents.send('set-installed-mods', updatedMods);
         }
-
+        
         return true;
     } catch (error) {
         console.error('Failed to delete mod:', error);

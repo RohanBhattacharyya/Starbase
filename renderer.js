@@ -50,7 +50,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 <span>OpenStarbound Version: ${selectedInstance.version}</span>
             </div>
             <div class="instance-controls">
-                <button id="launch-game-btn" class="primary"><i class="fas fa-play"></i> Launch Game</button>
+                <button id="launch-game-btn" class="${runningInstances.includes(selectedInstance.name) ? 'disabled-btn' : 'primary'}" ${runningInstances.includes(selectedInstance.name) ? 'disabled' : ''}><i class="fas fa-play"></i> Launch Game</button>
                 <button id ="mods-btn" class="secondary"><i class="fas fa-puzzle-piece"></i> Mods</button>
                 <button id ="logs-btn" class="secondary"><i class="fas fa-file-alt"></i> Logs</button>
                 <button id="open-folder-btn" class="secondary"><i class="fas fa-folder-open"></i> Open Folder</button>
@@ -146,15 +146,25 @@ window.addEventListener('DOMContentLoaded', () => {
 
             window.electronAPI.launchGame(selectedInstanceName);
             runningInstances.push(selectedInstanceName);
+
+
             document.getElementById('delete-instance-btn').disabled = true;
             document.getElementById('delete-instance-btn').className = "disabled-btn";
+
+            document.getElementById('launch-game-btn').disabled = true;
+            document.getElementById('launch-game-btn').className = "disabled-btn";
+
 
         }
 
         window.electronAPI.onGameClose(() => {
             runningInstances = runningInstances.filter(inst => inst !== selectedInstanceName);
+
             document.getElementById('delete-instance-btn').disabled = false;
             document.getElementById('delete-instance-btn').className = "danger";
+
+            document.getElementById('launch-game-btn').disabled = false;
+            document.getElementById('launch-game-btn').className = "primary";
 
         });
 
