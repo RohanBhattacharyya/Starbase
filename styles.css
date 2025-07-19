@@ -82,7 +82,7 @@ input[type="text"],
 select {
     width: 100%;
     padding: var(--spacing-sm);
-    margin-bottom: var(--spacing-lg);
+    margin-bottom: 0;
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     background-color: var(--bg-secondary);
@@ -97,18 +97,31 @@ select:focus {
     border-color: var(--accent-blue);
 }
 
-/* Dialog Specific Styles */
+/* Changed dialog styles for consistency */
+body.dialog-body {
+    padding-top: var(--spacing-md);
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    justify-content: flex-start;
+}
+
 body.dialog-body h1 {
     font-size: 18px; /* Smaller font size for dialog titles */
     text-align: center;
     width: 100%;
+    margin-bottom: 0;
 }
 
 body.dialog-body #dialog-message {
     font-size: 14px; /* Smaller font size for dialog messages */
     text-align: center;
     width: 100%;
-    margin-bottom: var(--spacing-md);
+    margin-bottom: 0;
 }
 
 /* Header Styles */
@@ -120,6 +133,12 @@ header {
     align-items: center;
     justify-content: space-between;
     gap: var(--spacing-md);
+}
+
+.header-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    align-items: center;
 }
 
 header h1 {
@@ -229,6 +248,7 @@ header h1 {
     color: var(--text-secondary);
     margin-top: 5px;
     margin-bottom: 10px;
+    padding: 8px 8px;
 }
 
 .instance-header span {
@@ -545,16 +565,34 @@ input:checked + .slider:before {
     margin: 0;
 }
 
-/* Buttons in dialogs */
 .dialog-body .buttons {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-    padding-top: 10px;
+    padding-top: 0;
+}
+
+/* Adjusted button container */
+.buttons-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+/* Adjusted icon picker */
+.icon-picker-container {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: 0;
+    margin-top: 0;
 }
 
 .dialog-body .search-bar {
-    margin-bottom: 15px;
+    margin-bottom: 0;
 }
 
 .dialog-body .search-bar input {
@@ -564,42 +602,42 @@ input:checked + .slider:before {
     box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 /* Custom Checkbox Styles */
-.mod-checkbox {                                                       
-    appearance: none;                                                 
-    -webkit-appearance: none;                                         
-    -moz-appearance: none;                                            
-    width: 20px;                                                      
-    height: 20px;                                                     
-    border: 2px solid var(--border-color);                            
-    border-radius: 4px;                                               
-    background-color: var(--bg-secondary);                            
-    cursor: pointer;                                                  
-    position: relative;                                               
-    transition: background-color 0.2s, border-color 0.2s;             
-}                                                                     
-.mod-checkbox:checked {                                               
-    background-color: var(--accent-blue);                             
-    border-color: var(--accent-blue);                                 
-}                                                                     
+.mod-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--bg-secondary);
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+.mod-checkbox:checked {
+    background-color: var(--accent-blue);
+    border-color: var(--accent-blue);
+}
 
-.mod-checkbox:checked::after {                                        
-    content: '\2713'; /* Checkmark character */                       
-    font-size: 14px;                                                  
-    color: white;                                                     
-    position: absolute;                                               
-    top: 50%;                                                         
-    left: 50%;                                                        
-    transform: translate(-50%, -50%);                                 
-}                                                                     
-.mod-checkbox:disabled {                                              
-    background-color: var(--bg-tertiary);                             
-    border-color: var(--border-color);                                
-    cursor: not-allowed;                                              
-    opacity: 0.6;                                                     
-}                                                                     
-.mod-checkbox:disabled:checked::after {                               
-    color: var(--text-secondary);                                     
-}  
+.mod-checkbox:checked::after {
+    content: '\2713'; /* Checkmark character */
+    font-size: 14px;
+    color: white;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.mod-checkbox:disabled {
+    background-color: var(--bg-tertiary);
+    border-color: var(--border-color);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+.mod-checkbox:disabled:checked::after {
+    color: var(--text-secondary);
+}
 
 .instance-list li:hover {
     background-color: var(--bg-tertiary);
