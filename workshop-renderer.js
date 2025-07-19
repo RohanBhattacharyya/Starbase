@@ -90,6 +90,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    searchInput.addEventListener('keyup', async (event) => {
+        if (event.key === 'Enter') {
+            const query = searchInput.value.trim();
+            if (!query) {
+                searchResults.innerHTML = '';
+                return;
+            }
+
+            searchResults.innerHTML = '<div class="loading-spinner"></div>';
+
+            try {
+                const mods = await window.electronAPI.searchWorkshop(query);
+                currentSearchResults = mods;
+                renderSearchResults(mods);
+
+            } catch (error) {
+                searchResults.innerHTML = '<p>Search failed. Please try again.</p>';
+                console.error('Workshop search failed:', error);
+            }
+        }
+    })
+
     searchButton.addEventListener('click', async () => {
         const query = searchInput.value.trim();
         if (!query) return;
