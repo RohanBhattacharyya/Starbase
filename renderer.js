@@ -118,17 +118,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 
     instanceDetails.addEventListener('click', async (event) => {
-        // const target = event.target.closest('.tab-btn');
-        // if (target) {
-        //     const tab = target.dataset.tab;
-        //     document.querySelectorAll('.tab-btn, .tab-pane').forEach(el => el.classList.remove('active'));
-        //     target.classList.add('active');
-        //     document.getElementById(`${tab}-tab`).classList.add('active');
-
-        //     if (tab === 'logs') {
-                
-        //     }
-        // }
 
         const modId = event.target.dataset.modId;
 
@@ -154,7 +143,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
         if (event.target.id === 'launch-game-btn') {
             window.electronAPI.launchGame(selectedInstanceName);
+            document.getElementById('delete-instance-btn').disabled = true;
+            document.getElementById('delete-instance-btn').className = "disabled-btn";
+
         }
+
+        window.electronAPI.onGameClose(() => {
+            document.getElementById('delete-instance-btn').disabled = false;
+            document.getElementById('delete-instance-btn').className = "danger";
+
+        });
 
         if (event.target.id === 'delete-instance-btn') {
             const confirm = await window.electronAPI.openInputDialog({
@@ -165,6 +163,13 @@ window.addEventListener('DOMContentLoaded', () => {
             if (confirm && !confirm.canceled) {
                 await window.electronAPI.deleteInstance(selectedInstanceName);
                 selectedInstanceName = null; // Reset selection
+
+                // Clear the log content when an instance is deleted
+                const logContent = document.getElementById('log-content');
+                if (logContent) {
+                    logContent.textContent = '';
+                }
+                
                 loadInstances();
             }
         }
