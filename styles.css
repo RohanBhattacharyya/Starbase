@@ -436,10 +436,15 @@ input:checked + .slider:before {
     transition: transform 0.2s ease;
     width: 250px; /* Fixed width for the card */
     flex-shrink: 0;
+    text-decoration: none;
 }
 
 .mod-card:hover {
     transform: translateY(-3px);
+}
+
+.mod-card .mod-name {
+    cursor: pointer;
 }
 
 .mod-card img {
