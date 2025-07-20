@@ -49,7 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 pickIconButton.style.display = 'inline-flex';
                 selectedIconPreview.style.display = 'inline-block';
                 currentSelectedIcon = options.icon || 'fa-rocket';
-                selectedIconPreview.className = `fas ${currentSelectedIcon}`;
+                updateIconPreview(currentSelectedIcon);
             }
 
             if (options.versions && options.versions.length > 0) {
@@ -70,9 +70,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const selected = await window.electronAPI.openIconPickerDialog(currentSelectedIcon);
             if (selected) {
                 currentSelectedIcon = selected;
-                selectedIconPreview.className = `fas ${currentSelectedIcon}`;
+                updateIconPreview(currentSelectedIcon);
             }
         });
+
+        function updateIconPreview(iconClass) {
+            selectedIconPreview.innerHTML = ''; // Clear previous content
+            if (iconClass.startsWith('fa-')) {
+                const iconElement = document.createElement('i');
+                iconElement.className = `fas ${iconClass}`;
+                selectedIconPreview.appendChild(iconElement);
+            } else {
+                const imgElement = document.createElement('img');
+                imgElement.src = iconClass;
+                imgElement.className = 'custom-icon'; // Apply custom-icon class for styling
+                selectedIconPreview.appendChild(imgElement);
+            }
+        }
     } else {
         console.error('window.inputDialogAPI is NOT defined!');
     }
