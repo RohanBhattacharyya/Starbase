@@ -23,7 +23,13 @@ window.addEventListener('DOMContentLoaded', () => {
         instances.forEach(instance => {
             const instanceElement = document.createElement('li');
             instanceElement.dataset.instanceName = instance.name;
-            instanceElement.innerHTML = `<i class="fas ${instance.icon || 'fa-rocket'}"></i> ${instance.name}`;
+            if (instance.icon && instance.icon.startsWith('fa-')) {
+                instanceElement.innerHTML = `<i class="fas ${instance.icon}"></i> ${instance.name}`;
+            } else if (instance.icon) {
+                instanceElement.innerHTML = `<img src="${instance.icon}" class="custom-icon"/> ${instance.name}`;
+            } else {
+                instanceElement.innerHTML = `<i class="fas fa-rocket"></i> ${instance.name}`;
+            }
             if (instance.name === selectedInstanceName) {
                 instanceElement.classList.add('active');
             }
@@ -43,9 +49,18 @@ window.addEventListener('DOMContentLoaded', () => {
 
         console.info(instanceDetailsBottom);
 
+        let iconHtml;
+        if (selectedInstance.icon && selectedInstance.icon.startsWith('fa-')) {
+            iconHtml = `<i class="fas ${selectedInstance.icon}"></i>`;
+        } else if (selectedInstance.icon) {
+            iconHtml = `<img src="${selectedInstance.icon}" class="custom-icon"/>`;
+        } else {
+            iconHtml = `<i class="fas fa-rocket"></i>`;
+        }
+
         instanceDetailsTop.innerHTML = `
             <div class="instance-header">
-                <h1><i class="fas ${selectedInstance.icon || 'fa-rocket'}"></i> ${selectedInstance.name} <button id="edit-instance-btn" class="secondary small"><i class="fas fa-edit"></i> Edit</button></h1>
+                <h1>${iconHtml} ${selectedInstance.name} <button id="edit-instance-btn" class="secondary small"><i class="fas fa-edit"></i> Edit</button></h1>
                 <p class="instance-description">${selectedInstance.description ? selectedInstance.description : 'No description provided.'}</p>
                 <span>OpenStarbound Version: ${selectedInstance.version}</span>
             </div>
