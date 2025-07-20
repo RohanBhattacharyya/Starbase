@@ -618,6 +618,8 @@ input:checked + .slider:before {
     justify-content: flex-end;
     gap: 10px;
     padding-top: 0;
+    padding-bottom: 2rem;
+    min-height: fit-content;
 }
 
 /* Adjusted button container */
