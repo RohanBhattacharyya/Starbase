@@ -1195,6 +1195,41 @@ ipcMain.handle('open-instance-folder', async (event, instanceName) => {
     }
 });
 
+const customIconsDir = path.join(app.getPath('userData'), 'custom_icons');
+if (!fs.existsSync(customIconsDir)) fse.mkdirpSync(customIconsDir);
+
+ipcMain.handle('import-icon', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }]
+    });
+
+    if (canceled || filePaths.length === 0) {
+        return null;
+    }
+
+    const sourcePath = filePaths[0];
+    const fileName = path.basename(sourcePath);
+    const destPath = path.join(customIconsDir, fileName);
+
+    try {
+        fse.copySync(sourcePath, destPath, { overwrite: true });
+        const customIcons = store.get('customIcons', []);
+        if (!customIcons.includes(destPath)) {
+            store.set('customIcons', [...customIcons, destPath]);
+        }
+        return destPath;
+    } catch (error) {
+        console.error('Failed to import icon:', error);
+        dialog.showErrorBox('Icon Import Failed', error.message);
+        return null;
+    }
+});
+
+ipcMain.handle('get-custom-icons', async () => {
+    return store.get('customIcons', []);
+});
+
 
 
 ipcMain.handle('check-for-openstarbound-update', async () => {
