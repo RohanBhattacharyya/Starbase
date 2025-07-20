@@ -86,6 +86,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="${buttonClass}" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>${buttonIcon} ${buttonText}</button>
                 </div>
             `;
+            modElement.querySelector(".mod-name").addEventListener('click', (event) => {
+                event.preventDefault();
+                window.electronAPI.openExternalLink(`https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.id}`);
+            });
             searchResults.appendChild(modElement);
         });
     }
