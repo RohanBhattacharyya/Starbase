@@ -11,7 +11,8 @@ const electronAPI = {
   updateModStatus: (instanceName, modId, enabled) => ipcRenderer.invoke('update-mod-status', instanceName, modId, enabled),
   deleteMod: (instanceName, modId) => ipcRenderer.invoke('delete-mod', instanceName, modId),
   openWorkshopWindow: (instanceName) => ipcRenderer.invoke('open-workshop-window', instanceName),
-  searchWorkshop: (query) => ipcRenderer.invoke('search-workshop', query),
+  searchWorkshop: (query, page) => ipcRenderer.invoke('search-workshop', query, page),
+  getPopularMods: (page) => ipcRenderer.invoke('get-popular-mods', page),
   downloadMod: (args) => ipcRenderer.invoke('download-mod', args),
   downloadMods: (modsToDownload, instanceName) => ipcRenderer.invoke('download-mods', modsToDownload, instanceName),
   openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options),
@@ -42,5 +43,6 @@ contextBridge.exposeInMainWorld('inputDialogAPI', {
 contextBridge.exposeInMainWorld('iconPickerAPI', {
   sendSelectedIcon: (iconClass) => ipcRenderer.send('icon-selected', iconClass),
   importIcon: () => ipcRenderer.invoke('import-icon'),
-  getCustomIcons: () => ipcRenderer.invoke('get-custom-icons')
+  getCustomIcons: () => ipcRenderer.invoke('get-custom-icons'),
+  openCustomIconsFolder: () => ipcRenderer.invoke('open-custom-icons-folder')
 });

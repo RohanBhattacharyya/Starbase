@@ -1,16 +1,20 @@
 document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
-    const searchResults = document.getElementById('mod-list');
+    const modList = document.getElementById('mod-list');
     const downloadSelectedButton = document.getElementById('download-selected-button');
     const downloadStatus = document.getElementById('download-status');
+    const contentContainer = document.getElementById('content-container');
 
     let instanceName = '';
     let installedMods = [];
-    let currentSearchResults = []; // Store current search results
-    const downloadingModIds = new Set(); // Track mods currently downloading
+    const downloadingModIds = new Set();
+    let currentPage = 1;
+    let loading = false;
+    let currentQuery = null;
+    let popularModsLoaded = false; // Track if popular mods have been loaded
+    const displayedModIds = new Set(); // Track displayed mod IDs to prevent duplicates
 
-    // Use the correct, dedicated API for the workshop window
     window.workshopAPI.onSetInstanceName((name) => {
         instanceName = name;
         document.getElementById('instance-name-header').textContent = `Mod Manager for ${name}`;
@@ -18,7 +22,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.workshopAPI.onSetInstalledMods((mods) => {
         installedMods = mods;
-        // Update the status of currently displayed mods
+        updateModCards();
+    });
+
+    window.workshopAPI.onDownloadStatusUpdate((status) => {
+        if (status.active > 0) {
+            downloadStatus.textContent = `Downloading ${status.active} of ${status.total} mods...`;
+            downloadStatus.style.display = 'block';
+        } else {
+            downloadStatus.textContent = '';
+            downloadStatus.style.display = 'none';
+        }
+    });
+
+    function updateModCards() {
         document.querySelectorAll('.mod-card').forEach(modCard => {
             const modId = modCard.querySelector('.download-mod-button').dataset.modId;
             const isInstalled = installedMods.some(installedMod => installedMod.id === modId);
@@ -31,14 +48,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.classList.remove('primary');
                 button.disabled = true;
                 if (checkbox) checkbox.disabled = true;
-                downloadingModIds.delete(modId); // Remove from downloading if now installed
+                downloadingModIds.delete(modId);
             } else if (downloadingModIds.has(modId)) {
-                // If it's still downloading, keep it as such
                 button.textContent = 'Downloading...';
                 button.disabled = true;
                 if (checkbox) checkbox.disabled = true;
             } else {
-                // If neither installed nor downloading, it's available for download
                 button.textContent = 'Download';
                 button.classList.remove('installed');
                 button.classList.add('primary');
@@ -46,27 +61,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (checkbox) checkbox.disabled = false;
             }
         });
-    });
+    }
 
-    // Listen for download status updates
-    window.workshopAPI.onDownloadStatusUpdate((status) => {
-        if (status.active > 0) {
-            downloadStatus.textContent = `Downloading ${status.active} of ${status.total} mods...`;
-            downloadStatus.style.display = 'block';
-        } else {
-            downloadStatus.textContent = '';
-            downloadStatus.style.display = 'none';
+    function renderMods(mods, append = false) {
+        if (!append) {
+            modList.innerHTML = '';
+            displayedModIds.clear();
         }
-    });
 
-    function renderSearchResults(mods) {
-        searchResults.innerHTML = '';
-        if (mods.length === 0) {
-            searchResults.innerHTML = '<p>No mods found.</p>';
+        const uniqueMods = mods.filter(mod => !displayedModIds.has(mod.id));
+
+        if (uniqueMods.length === 0 && !append) {
+            modList.innerHTML = '<p>No mods found.</p>';
             return;
         }
 
-        mods.forEach(mod => {
+        uniqueMods.forEach(mod => {
+            displayedModIds.add(mod.id);
             const isInstalled = installedMods.some(installedMod => installedMod.id === mod.id);
             const buttonText = isInstalled ? 'Installed' : (downloadingModIds.has(mod.id) ? 'Downloading...' : 'Download');
             const buttonClass = isInstalled ? 'download-mod-button installed' : (downloadingModIds.has(mod.id) ? 'download-mod-button downloading' : 'download-mod-button primary');
@@ -82,58 +93,72 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p class="mod-id">ID: ${mod.id}</p>
                 </div>
                 <div class="mod-card-actions">
-                    <input type="checkbox" class="mod-checkbox" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${isInstalled || downloadingModIds.has(mod.id) ? 'disabled' : ''}>
+                    <input type="checkbox" class="mod-checkbox" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>
                     <button class="${buttonClass}" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>${buttonIcon} ${buttonText}</button>
                 </div>
             `;
             modElement.querySelector(".mod-name").addEventListener('click', (event) => {
                 event.preventDefault();
-                window.electronAPI.openExternalLink(`https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.id}`);
+                window.electronAPI.openExternalLink(mod.url);
             });
-            searchResults.appendChild(modElement);
+            modList.appendChild(modElement);
         });
+        updateModCards();
+    }
+
+    async function fetchAndRenderMods(page, query = null) {
+        if (loading) return;
+        loading = true;
+        modList.insertAdjacentHTML('beforeend', '<div class="loading-spinner"></div>');
+
+        try {
+            const mods = query
+                ? await window.electronAPI.searchWorkshop(query, page)
+                : await window.electronAPI.getPopularMods(page);
+
+            renderMods(mods, page > 1 || popularModsLoaded);
+            currentPage = page + 1;
+            if (!query) {
+                popularModsLoaded = true;
+            }
+        } catch (error) {
+            modList.innerHTML = '<p>Failed to load mods. Please try again.</p>';
+            console.error('Workshop fetch failed:', error);
+        } finally {
+            loading = false;
+            const spinner = modList.querySelector('.loading-spinner');
+            if (spinner) spinner.remove();
+        }
+    }
+
+    async function handleSearch() {
+        const query = searchInput.value.trim();
+        modList.innerHTML = '';
+        currentPage = 1;
+        currentQuery = query;
+        popularModsLoaded = false; // Reset popular mods flag
+        if (query) {
+            await fetchAndRenderMods(currentPage, query);
+        } else {
+            await fetchAndRenderMods(currentPage);
+        }
     }
 
     searchInput.addEventListener('keyup', async (event) => {
         if (event.key === 'Enter') {
-            const query = searchInput.value.trim();
-            if (!query) {
-                searchResults.innerHTML = '';
-                return;
-            }
-
-            searchResults.innerHTML = '<div class="loading-spinner"></div>';
-
-            try {
-                const mods = await window.electronAPI.searchWorkshop(query);
-                currentSearchResults = mods;
-                renderSearchResults(mods);
-
-            } catch (error) {
-                searchResults.innerHTML = '<p>Search failed. Please try again.</p>';
-                console.error('Workshop search failed:', error);
-            }
-        }
-    })
-
-    searchButton.addEventListener('click', async () => {
-        const query = searchInput.value.trim();
-        if (!query) return;
-
-        searchResults.innerHTML = '<div class="loading-spinner"></div>';
-
-        try {
-            const mods = await window.electronAPI.searchWorkshop(query);
-            currentSearchResults = mods; // Store the results
-            renderSearchResults(mods);
-
-        } catch (error) {
-            searchResults.innerHTML = '<p>Search failed. Please try again.</p>';
-            console.error('Workshop search failed:', error);
+            handleSearch();
         }
     });
 
-    searchResults.addEventListener('click', async (event) => {
+    searchButton.addEventListener('click', handleSearch);
+
+    contentContainer.addEventListener('scroll', () => {
+        if (popularModsLoaded && !currentQuery && contentContainer.scrollTop + contentContainer.clientHeight >= contentContainer.scrollHeight - 100) {
+            fetchAndRenderMods(currentPage);
+        }
+    });
+
+    modList.addEventListener('click', async (event) => {
         if (event.target.classList.contains('download-mod-button')) {
             const modId = event.target.dataset.modId;
             const modName = event.target.dataset.modName;
@@ -143,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.disabled = true;
             const checkbox = button.previousElementSibling;
             if (checkbox) checkbox.disabled = true;
-            downloadingModIds.add(modId); // Add to downloading set
+            downloadingModIds.add(modId);
 
             try {
                 await window.electronAPI.downloadMod({ modId, modName, instanceName });
@@ -151,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.textContent = 'Error';
                 button.classList.add('error');
                 console.error('Mod download failed:', error);
-                downloadingModIds.delete(modId); // Remove from downloading on error
+                downloadingModIds.delete(modId);
             }
         }
     });
@@ -161,17 +186,13 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.mod-checkbox:checked').forEach(checkbox => {
             const modId = checkbox.dataset.modId;
             const modName = checkbox.dataset.modName;
-            selectedMods.push({
-                id: modId,
-                name: modName
-            });
-            // Disable checkboxes and buttons for selected mods
+            selectedMods.push({ id: modId, name: modName });
             checkbox.disabled = true;
-            const button = checkbox.nextElementSibling; // Assuming button is next to checkbox
+            const button = checkbox.nextElementSibling;
             if (button) {
                 button.textContent = 'Downloading...';
                 button.disabled = true;
-                downloadingModIds.add(modId); // Add to downloading set
+                downloadingModIds.add(modId);
             }
         });
 
@@ -181,4 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Please select at least one mod to download.');
         }
     });
+
+    // Initial load
+    fetchAndRenderMods(currentPage);
 });

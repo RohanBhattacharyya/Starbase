@@ -763,7 +763,7 @@ function getSteamWorkshopDirectory() {
     }
 }
 
-ipcMain.handle('search-workshop', async (event, query) => {
+ipcMain.handle('search-workshop', async (event, query, page = 1) => {
     let apiKey = store.get('steamApiKey');
     if (!apiKey) {
         const result = await showInputDialog({
@@ -802,7 +802,8 @@ ipcMain.handle('search-workshop', async (event, query) => {
                     key: apiKey,
                     appid: 211820,
                     search_text: query,
-                    numperpage: 20,
+                    numperpage: 20, // Fetch 20 items per page
+                    page: page, // Pass the page number to the API
                     return_metadata: true
                 }
             });
@@ -825,6 +826,50 @@ ipcMain.handle('search-workshop', async (event, query) => {
     } catch (error) {
         console.error('Failed to search workshop:', error);
         dialog.showErrorBox('Workshop Search Failed', 'Could not fetch or parse search results from the Steam Workshop API.');
+        return [];
+    }
+});
+
+
+ipcMain.handle('get-popular-mods', async (event, page = 1) => {
+    let apiKey = store.get('steamApiKey');
+    if (!apiKey) {
+        // This part is simplified; in a real app, you'd want to prompt for the key
+        // or handle this more gracefully.
+        dialog.showErrorBox('API Key Required', 'A Steam Web API key is required.');
+        return [];
+    }
+
+    const searchUrl = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/`;
+
+    try {
+        const response = await axios.get(searchUrl, {
+            params: {
+                key: apiKey,
+                appid: 211820, // Starbound's App ID
+                query_type: 0, // Corresponds to 'RankedByVote'
+                page: page,
+                numperpage: 20,
+                return_metadata: true
+            }
+        });
+
+        const details = response.data.response.publishedfiledetails;
+        if (!details || details.length === 0) {
+            return [];
+        }
+
+        const mods = details.map(mod => ({
+            id: mod.publishedfileid,
+            name: mod.title,
+            imageUrl: mod.preview_url,
+            url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.publishedfileid}`
+        }));
+        return mods;
+
+    } catch (error) {
+        console.error('Failed to get popular mods:', error);
+        dialog.showErrorBox('Workshop Fetch Failed', 'Could not fetch popular mods from the Steam Workshop API.');
         return [];
     }
 });
@@ -1227,7 +1272,26 @@ ipcMain.handle('import-icon', async () => {
 });
 
 ipcMain.handle('get-custom-icons', async () => {
-    return store.get('customIcons', []);
+    const customIcons = store.get('customIcons', []);
+    const existingIcons = customIcons.filter(iconPath => fs.existsSync(iconPath));
+
+    if (existingIcons.length !== customIcons.length) {
+        store.set('customIcons', existingIcons);
+    }
+
+    return existingIcons;
+});
+
+ipcMain.handle('open-custom-icons-folder', async () => {
+    const customIconsDir = path.join(app.getPath('userData'), 'custom_icons');
+    try {
+        await shell.openPath(customIconsDir);
+        return true;
+    } catch (error) {
+        console.error('Failed to open custom icons folder:', error);
+        dialog.showErrorBox('Error', 'Could not open custom icons folder.');
+        return false;
+    }
 });
 
 
