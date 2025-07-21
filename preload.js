@@ -43,5 +43,6 @@ contextBridge.exposeInMainWorld('inputDialogAPI', {
 contextBridge.exposeInMainWorld('iconPickerAPI', {
   sendSelectedIcon: (iconClass) => ipcRenderer.send('icon-selected', iconClass),
   importIcon: () => ipcRenderer.invoke('import-icon'),
-  getCustomIcons: () => ipcRenderer.invoke('get-custom-icons')
+  getCustomIcons: () => ipcRenderer.invoke('get-custom-icons'),
+  openCustomIconsFolder: () => ipcRenderer.invoke('open-custom-icons-folder')
 });

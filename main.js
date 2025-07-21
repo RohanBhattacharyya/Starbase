@@ -1272,7 +1272,26 @@ ipcMain.handle('import-icon', async () => {
 });
 
 ipcMain.handle('get-custom-icons', async () => {
-    return store.get('customIcons', []);
+    const customIcons = store.get('customIcons', []);
+    const existingIcons = customIcons.filter(iconPath => fs.existsSync(iconPath));
+
+    if (existingIcons.length !== customIcons.length) {
+        store.set('customIcons', existingIcons);
+    }
+
+    return existingIcons;
+});
+
+ipcMain.handle('open-custom-icons-folder', async () => {
+    const customIconsDir = path.join(app.getPath('userData'), 'custom_icons');
+    try {
+        await shell.openPath(customIconsDir);
+        return true;
+    } catch (error) {
+        console.error('Failed to open custom icons folder:', error);
+        dialog.showErrorBox('Error', 'Could not open custom icons folder.');
+        return false;
+    }
 });
 
 
