@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadSelectedButton = document.getElementById('download-selected-button');
     const downloadStatus = document.getElementById('download-status');
     const contentContainer = document.getElementById('content-container');
+    const categoryList = document.getElementById('category-list');
+    const sortByList = document.getElementById('sort-by-list');
 
     let instanceName = '';
     let installedMods = [];
@@ -12,8 +14,43 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPage = 1;
     let loading = false;
     let currentQuery = null;
-    let popularModsLoaded = false; // Track if popular mods have been loaded
+    let currentSort = 'popular';
     const displayedModIds = new Set(); // Track displayed mod IDs to prevent duplicates
+
+    const steamWorkshopCategories = [
+        'All',
+        'Armor and Clothes',
+        'Character Improvements',
+        'Crafting and Building',
+        'Dungeons',
+        'Food and Farming',
+        'Furniture and Objects',
+        'In-Game Tools',
+        'Mechanics',
+        'Miscellaneous',
+        'Musical Instruments and Songs',
+        'NPCs and Creatures',
+        'Planets and Environments',
+        'Quests',
+        'Ships',
+        'Species',
+        'User Interface',
+        'Vehicles and Mounts',
+        'Weapons'
+    ];
+
+    function renderCategories() {
+        categoryList.innerHTML = '';
+        steamWorkshopCategories.forEach(category => {
+            const categoryElement = document.createElement('li');
+            categoryElement.textContent = category;
+            categoryElement.dataset.category = category;
+            if (category === 'All') {
+                categoryElement.classList.add('active');
+            }
+            categoryList.appendChild(categoryElement);
+        });
+    }
 
     window.workshopAPI.onSetInstanceName((name) => {
         instanceName = name;
@@ -106,21 +143,16 @@ document.addEventListener('DOMContentLoaded', () => {
         updateModCards();
     }
 
-    async function fetchAndRenderMods(page, query = null) {
+    async function fetchAndRenderMods(page, query = null, sort = 'popular') {
         if (loading) return;
         loading = true;
         modList.insertAdjacentHTML('beforeend', '<div class="loading-spinner"></div>');
 
         try {
-            const mods = query
-                ? await window.electronAPI.searchWorkshop(query, page)
-                : await window.electronAPI.getPopularMods(page);
+            const mods = await window.electronAPI.getMods(query, sort, page);
 
-            renderMods(mods, page > 1 || popularModsLoaded);
+            renderMods(mods, page > 1);
             currentPage = page + 1;
-            if (!query) {
-                popularModsLoaded = true;
-            }
         } catch (error) {
             modList.innerHTML = '<p>Failed to load mods. Please try again.</p>';
             console.error('Workshop fetch failed:', error);
@@ -136,12 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modList.innerHTML = '';
         currentPage = 1;
         currentQuery = query;
-        popularModsLoaded = false; // Reset popular mods flag
-        if (query) {
-            await fetchAndRenderMods(currentPage, query);
-        } else {
-            await fetchAndRenderMods(currentPage);
-        }
+        await fetchAndRenderMods(currentPage, currentQuery, currentSort);
     }
 
     searchInput.addEventListener('keyup', async (event) => {
@@ -152,9 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     searchButton.addEventListener('click', handleSearch);
 
-    contentContainer.addEventListener('scroll', () => {
-        if (popularModsLoaded && !currentQuery && contentContainer.scrollTop + contentContainer.clientHeight >= contentContainer.scrollHeight - 100) {
-            fetchAndRenderMods(currentPage);
+    document.getElementById('mod-list-container').addEventListener('scroll', () => {
+        const container = document.getElementById('mod-list-container');
+        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
+            fetchAndRenderMods(currentPage, currentQuery, currentSort);
         }
     });
 
@@ -203,6 +231,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    categoryList.addEventListener('click', (event) => {
+        if (event.target.tagName === 'LI') {
+            const category = event.target.dataset.category;
+
+            document.querySelectorAll('#category-list li').forEach(li => {
+                li.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            if (category === 'All') {
+                searchInput.value = '';
+                handleSearch();
+            } else {
+                searchInput.value = category;
+                handleSearch();
+            }
+        }
+    });
+
+    sortByList.addEventListener('click', (event) => {
+        if (event.target.tagName === 'LI') {
+            const sort = event.target.dataset.sort;
+
+            document.querySelectorAll('#sort-by-list li').forEach(li => {
+                li.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            currentSort = sort;
+            handleSearch();
+        }
+    });
+
     // Initial load
-    fetchAndRenderMods(currentPage);
+    renderCategories();
+    fetchAndRenderMods(currentPage, currentQuery, currentSort);
 });

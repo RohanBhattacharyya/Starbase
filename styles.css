@@ -155,11 +155,69 @@ header h1 {
 /* Main Content Area */
 .content {
     flex-grow: 1;
-    overflow-y: auto;
-    overflow-x: auto; /* Allow horizontal scrolling */
+    overflow: hidden;
     padding: var(--spacing-lg);
     display: flex;
     gap: var(--spacing-lg);
+}
+
+.sidebar {
+    flex-basis: 200px;
+    flex-shrink: 0;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    overflow-y: auto;
+}
+
+.sidebar h2 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    background-color: var(--bg-tertiary);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.sidebar ul:last-of-type {
+    margin-bottom: 0;
+}
+
+.sidebar li {
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    margin-bottom: 5px;
+}
+
+.sidebar li:last-child {
+    margin-bottom: 0;
+}
+
+.sidebar li.active {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+.sidebar li:hover {
+    background-color: var(--bg-secondary);
+}
+
+.mod-list-container {
+    flex-grow: 1;
+    overflow-y: auto;
 }
 
 /* Instance List (Left Panel) */
