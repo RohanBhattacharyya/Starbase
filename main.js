@@ -821,6 +821,7 @@ ipcMain.handle('get-mods', async (event, query = null, sort = 'popular', page = 
 
         const details = response.data.response.publishedfiledetails;
 
+       /* No Mods Founds pop-up error, disabled for now
         if (!details || details.length === 0 || details[0].result === 9) {
              if (query) {
                 dialog.showErrorBox('No Mods Found', `No mods found for your query: "${query}"`);
@@ -828,7 +829,7 @@ ipcMain.handle('get-mods', async (event, query = null, sort = 'popular', page = 
                 dialog.showErrorBox('No Mods Found', 'No mods found.');
             }
             return [];
-        }
+        }*/
 
         const mods = details.map(mod => ({
             id: mod.publishedfileid,
@@ -840,7 +841,8 @@ ipcMain.handle('get-mods', async (event, query = null, sort = 'popular', page = 
 
     } catch (error) {
         console.error('Failed to search workshop:', error);
-        dialog.showErrorBox('Workshop Search Failed', 'Could not fetch or parse search results from the Steam Workshop API.');
+        /* Also disabled for now
+        dialog.showErrorBox('Workshop Search Failed', 'Could not fetch or parse search results from the Steam Workshop API.'); */
         return [];
     }
 });
