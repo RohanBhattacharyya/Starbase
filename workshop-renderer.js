@@ -15,9 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let loading = false;
     let currentQuery = null;
     let currentSort = 'popular';
+    let favoritedModIds = new Set(JSON.parse(localStorage.getItem('favoritedModIds') || '[]'));
     const displayedModIds = new Set(); // Track displayed mod IDs to prevent duplicates
 
     const steamWorkshopCategories = [
+        'Favourite',
         'All',
         'Armor and Clothes',
         'Character Improvements',
@@ -120,6 +122,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const buttonClass = isInstalled ? 'download-mod-button installed' : (downloadingModIds.has(mod.id) ? 'download-mod-button downloading' : 'download-mod-button primary');
             const buttonIcon = isInstalled ? '<i class="fas fa-check"></i>' : (downloadingModIds.has(mod.id) ? '<i class="fas fa-spinner fa-spin"></i>' : '<i class="fas fa-download"></i>');
             const buttonDisabled = isInstalled || downloadingModIds.has(mod.id) ? 'disabled' : '';
+            const isFavorited = favoritedModIds.has(mod.id);
+            const favoriteButtonClass = isFavorited ? 'favorite-mod-button favorited' : 'favorite-mod-button';
+            const favoriteButtonIcon = isFavorited ? '<i class="fas fa-heart"></i>' : '<i class="fas fa-heart"></i>';
 
             const modElement = document.createElement('div');
             modElement.className = 'mod-card';
@@ -130,6 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <p class="mod-id">ID: ${mod.id}</p>
                 </div>
                 <div class="mod-card-actions">
+                    <button class="${favoriteButtonClass}" data-mod-id="${mod.id}">${favoriteButtonIcon}</button>
                     <input type="checkbox" class="mod-checkbox" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>
                     <button class="${buttonClass}" data-mod-id="${mod.id}" data-mod-name="${mod.name}" ${buttonDisabled}>${buttonIcon} ${buttonText}</button>
                 </div>
@@ -138,18 +144,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 event.preventDefault();
                 window.electronAPI.openExternalLink(mod.url);
             });
+            modElement.querySelector(".favorite-mod-button").addEventListener('click', (event) => {
+                const modId = event.currentTarget.dataset.modId;
+                if (favoritedModIds.has(modId)) {
+                    favoritedModIds.delete(modId);
+                    event.currentTarget.classList.remove('favorited');
+                } else {
+                    favoritedModIds.add(modId);
+                    event.currentTarget.classList.add('favorited');
+                }
+                localStorage.setItem('favoritedModIds', JSON.stringify(Array.from(favoritedModIds)));
+            });
             modList.appendChild(modElement);
         });
         updateModCards();
     }
 
-    async function fetchAndRenderMods(page, query = null, sort = 'popular') {
+    async function fetchAndRenderMods(page, query = null, sort = 'popular', category = 'All') {
         if (loading) return;
         loading = true;
         modList.insertAdjacentHTML('beforeend', '<div class="loading-spinner"></div>');
 
         try {
-            const mods = await window.electronAPI.getMods(query, sort, page);
+            let mods;
+            if (category === 'Favourite') {
+                const allMods = await window.electronAPI.getMods(null, sort, 1, 9999);
+                mods = allMods.filter(mod => favoritedModIds.has(mod.id));
+            } else {
+                mods = await window.electronAPI.getMods(query, sort, page);
+            }
 
             renderMods(mods, page > 1);
             currentPage = page + 1;
@@ -163,12 +186,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function handleSearch() {
+    async function handleSearch(category = 'All') {
         const query = searchInput.value.trim();
         modList.innerHTML = '';
         currentPage = 1;
         currentQuery = query;
-        await fetchAndRenderMods(currentPage, currentQuery, currentSort);
+        await fetchAndRenderMods(currentPage, currentQuery, currentSort, category);
     }
 
     searchInput.addEventListener('keyup', async (event) => {
@@ -242,10 +265,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (category === 'All') {
                 searchInput.value = '';
-                handleSearch();
+                handleSearch('All');
+            } else if (category === 'Favourite') {
+                searchInput.value = '';
+                handleSearch('Favourite');
             } else {
                 searchInput.value = category;
-                handleSearch();
+                handleSearch(category);
             }
         }
     });
@@ -266,5 +292,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial load
     renderCategories();
-    fetchAndRenderMods(currentPage, currentQuery, currentSort);
+    fetchAndRenderMods(currentPage, currentQuery, currentSort, 'All');
 });
