@@ -18,9 +18,22 @@
         <div id="download-status" class="download-status" style="display: none;"></div>
     </header>
     <div class="content" id="content-container">
-        <div id="mod-list" class="mod-list">
-            <!-- Mods will be loaded here -->
-            
+        <div class="sidebar">
+            <h2>Sort by</h2>
+            <ul id="sort-by-list">
+                <li data-sort="popular" class="active">Popular</li>
+                <li data-sort="newest">Newest</li>
+                <li data-sort="trending">Trending</li>
+            </ul>
+            <h2>Categories</h2>
+            <ul id="category-list">
+                <!-- Categories will be loaded here -->
+            </ul>
+        </div>
+        <div id="mod-list-container" class="mod-list-container">
+            <div id="mod-list" class="mod-list">
+                <!-- Mods will be loaded here -->
+            </div>
         </div>
     </div>
     <script src="./workshop-renderer.js"></script>

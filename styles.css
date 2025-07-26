@@ -155,11 +155,69 @@ header h1 {
 /* Main Content Area */
 .content {
     flex-grow: 1;
-    overflow-y: auto;
-    overflow-x: auto; /* Allow horizontal scrolling */
+    overflow: hidden;
     padding: var(--spacing-lg);
     display: flex;
     gap: var(--spacing-lg);
+}
+
+.sidebar {
+    flex-basis: 200px;
+    flex-shrink: 0;
+    background-color: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    overflow-y: auto;
+}
+
+.sidebar h2 {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    font-size: 16px;
+    color: var(--text-secondary);
+}
+
+.sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    background-color: var(--bg-tertiary);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.sidebar ul:last-of-type {
+    margin-bottom: 0;
+}
+
+.sidebar li {
+    padding: var(--spacing-sm);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    margin-bottom: 5px;
+}
+
+.sidebar li:last-child {
+    margin-bottom: 0;
+}
+
+.sidebar li.active {
+    background-color: var(--accent-blue);
+    color: white;
+}
+
+.sidebar li:hover {
+    background-color: var(--bg-secondary);
+}
+
+.mod-list-container {
+    flex-grow: 1;
+    overflow-y: auto;
 }
 
 /* Instance List (Left Panel) */
@@ -440,6 +498,7 @@ input:checked + .slider:before {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    justify-content: flex-end;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     transition: transform 0.2s ease;
     width: 250px; /* Fixed width for the card */
@@ -466,6 +525,7 @@ input:checked + .slider:before {
     padding: var(--spacing-md);
     display: flex;
     flex-direction: column;
+    flex-grow: 1;
 }
 
 .mod-card-content h3 {
@@ -480,11 +540,57 @@ input:checked + .slider:before {
     color: var(--text-secondary);
 }
 
+.mod-card-actions .favorite-mod-button {
+    background-color: transparent;
+    font-size: 18px;
+    width: 20px;
+    height: 20px;
+    margin-top: 3px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-shadow:
+    -1.5px -1.5px 0 var(--border-color),
+     1.5px -1.5px 0 var(--border-color),
+    -1.5px  1.5px 0 var(--border-color),
+     1.5px  1.5px 0 var(--border-color),
+     0px  0px 2px var(--border-color); 
+}
+
+.mod-card-actions .favorite-mod-button:hover {
+    background-color: transparent;
+    text-shadow:
+    -1.5px -1.5px 0 var(--border-color),
+     1.5px -1.5px 0 var(--border-color),
+    -1.5px  1.5px 0 var(--border-color),
+     1.5px  1.5px 0 var(--border-color),
+     0px  0px 2px var(--border-color); 
+}
+
+.mod-card-actions .favorite-mod-button.favorited {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+.mod-card-actions .favorite-mod-button.favorited:hover {
+    background-color: transparent;
+}
+
+.mod-card-actions .favorite-mod-button i {
+    color: var(--bg-secondary);
+}
+
+.mod-card-actions .favorite-mod-button.favorited i {
+    color: var(--accent-red);
+}
+
 .mod-card-actions {
     padding: var(--spacing-md);
     border-top: 1px solid var(--border-color);
     display: flex;
     justify-content: flex-end;
+    gap: 5px;
 }
 
 .mod-card-actions button {

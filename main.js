@@ -763,7 +763,7 @@ function getSteamWorkshopDirectory() {
     }
 }
 
-ipcMain.handle('search-workshop', async (event, query, page = 1) => {
+ipcMain.handle('get-mods', async (event, query = null, sort = 'popular', page = 1) => {
     let apiKey = store.get('steamApiKey');
     if (!apiKey) {
         const result = await showInputDialog({
@@ -780,84 +780,56 @@ ipcMain.handle('search-workshop', async (event, query, page = 1) => {
         store.set('steamApiKey', apiKey);
     }
 
-    let searchUrl;
-    const isNumericId = /^\d+$/.test(query);
-
-    if (isNumericId) {
-        searchUrl = `https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/`;
-    } else {
-        searchUrl = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/`;
-    }
-
-    try {
-        let response;
-        if (isNumericId) {
-            const params = new URLSearchParams();
-            params.append('itemcount', 1);
-            params.append('publishedfileids[0]', query);
-            response = await axios.post(searchUrl, params);
-        } else {
-            response = await axios.get(searchUrl, {
-                params: {
-                    key: apiKey,
-                    appid: 211820,
-                    search_text: query,
-                    numperpage: 20, // Fetch 20 items per page
-                    page: page, // Pass the page number to the API
-                    return_metadata: true
-                }
-            });
-        }
-
-        const details = response.data.response.publishedfiledetails;
-
-        if (!details || details.length === 0 || details[0].result === 9) {
-             dialog.showErrorBox('No Mods Found', `No mods found for your query: "${query}"`);
-            return [];
-        }
-
-        const mods = details.map(mod => ({
-            id: mod.publishedfileid,
-            name: mod.title,
-            imageUrl: mod.preview_url,
-            url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.publishedfileid}`
-        }));
-        return mods;
-    } catch (error) {
-        console.error('Failed to search workshop:', error);
-        dialog.showErrorBox('Workshop Search Failed', 'Could not fetch or parse search results from the Steam Workshop API.');
-        return [];
-    }
-});
-
-
-ipcMain.handle('get-popular-mods', async (event, page = 1) => {
-    let apiKey = store.get('steamApiKey');
-    if (!apiKey) {
-        // This part is simplified; in a real app, you'd want to prompt for the key
-        // or handle this more gracefully.
-        dialog.showErrorBox('API Key Required', 'A Steam Web API key is required.');
-        return [];
-    }
-
     const searchUrl = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/`;
 
+    let query_type;
+    let days_param;
+
+    switch (sort) {
+        case 'popular':
+            query_type = 0;
+            break;
+        case 'newest':
+            query_type = 1;
+            break;
+        case 'trending':
+            query_type = 3;
+            days_param = 7; // TODO: Add an option for the user to choose the number of days? Optional, low priority
+            break;
+        default:
+            query_type = 0;
+    }
+
     try {
-        const response = await axios.get(searchUrl, {
-            params: {
-                key: apiKey,
-                appid: 211820, // Starbound's App ID
-                query_type: 0, // Corresponds to 'RankedByVote'
-                page: page,
-                numperpage: 20,
-                return_metadata: true
-            }
-        });
+        const params = {
+            key: apiKey,
+            appid: 211820,
+            query_type: query_type,
+            page: page,
+            numperpage: 20,
+            return_metadata: true,
+        };
+
+        if (query) {
+            params.search_text = query;
+        }
+        if (days_param) {
+            params.days = days_param;
+        }
+
+        const response = await axios.get(searchUrl, { params });
 
         const details = response.data.response.publishedfiledetails;
-        if (!details || details.length === 0) {
+
+       /* No Mods Founds pop-up error, disabled for now
+        if (!details || details.length === 0 || details[0].result === 9) {
+             if (query) {
+                dialog.showErrorBox('No Mods Found', `No mods found for your query: "${query}"`);
+            } else {
+                dialog.showErrorBox('No Mods Found', 'No mods found.');
+            }
             return [];
-        }
+        }*/
 
         const mods = details.map(mod => ({
             id: mod.publishedfileid,
@@ -868,11 +840,16 @@ ipcMain.handle('get-popular-mods', async (event, page = 1) => {
         return mods;
 
     } catch (error) {
-        console.error('Failed to get popular mods:', error);
-        dialog.showErrorBox('Workshop Fetch Failed', 'Could not fetch popular mods from the Steam Workshop API.');
+        console.error('Failed to search workshop:', error);
+        /* Also disabled for now
+        dialog.showErrorBox('Workshop Search Failed', 'Could not fetch or parse search results from the Steam Workshop API.'); */
         return [];
     }
 });
+
+
+
+
 
 ipcMain.handle('download-mod', async (event, { modId, modName, instanceName }) => {
     downloadQueue.push({ modId, modName, instanceName });
@@ -1272,7 +1249,26 @@ ipcMain.handle('import-icon', async () => {
 });
 
 ipcMain.handle('get-custom-icons', async () => {
-    return store.get('customIcons', []);
+    const customIcons = store.get('customIcons', []);
+    const existingIcons = customIcons.filter(iconPath => fs.existsSync(iconPath));
+
+    if (existingIcons.length !== customIcons.length) {
+        store.set('customIcons', existingIcons);
+    }
+
+    return existingIcons;
+});
+
+ipcMain.handle('open-custom-icons-folder', async () => {
+    const customIconsDir = path.join(app.getPath('userData'), 'custom_icons');
+    try {
+        await shell.openPath(customIconsDir);
+        return true;
+    } catch (error) {
+        console.error('Failed to open custom icons folder:', error);
+        dialog.showErrorBox('Error', 'Could not open custom icons folder.');
+        return false;
+    }
 });
 
 

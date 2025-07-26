@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const selectButton = document.getElementById('select-button');
     const cancelButton = document.getElementById('cancel-button');
     const importButton = document.getElementById('import-button');
+    const openFolderButton = document.getElementById('open-folder-button');
 
     let selectedIcon = null;
     let customIcons = [];
@@ -125,6 +126,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     cancelButton.addEventListener('click', () => {
         window.iconPickerAPI.sendSelectedIcon(null);
+    });
+
+    openFolderButton.addEventListener('click', () => {
+        window.iconPickerAPI.openCustomIconsFolder();
     });
 
     // Initial render
