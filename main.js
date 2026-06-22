@@ -125,6 +125,32 @@ async function runSteamCmdDownloads(mods) {
     });
 }
 
+function truncateUtf8(value, maxBytes) {
+    const characters = Array.from(value);
+    while (characters.length > 0 && Buffer.byteLength(characters.join(''), 'utf8') > maxBytes) {
+        characters.pop();
+    }
+    return characters.join('');
+}
+
+function createModFileBaseName(modName, modId) {
+    const suffix = `-${modId}`;
+    let safeName = String(modName || 'Workshop Mod')
+        .normalize('NFKC')
+        .replace(/[\u0000-\u001f<>:"/\\|?*]/g, '-')
+        .replace(/\s+/g, ' ')
+        .replace(/^[ .]+|[ .-]+$/g, '');
+
+    if (!safeName) safeName = 'Workshop Mod';
+    if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(safeName)) safeName = `_${safeName}`;
+
+    // Leave room under the common 255-byte filename limit for the Workshop ID,
+    // extension, and disabled suffix used by the launcher.
+    const maxNameBytes = Math.max(32, 230 - Buffer.byteLength(`${suffix}.pak.disabled`, 'utf8'));
+    safeName = truncateUtf8(safeName, maxNameBytes).replace(/[ .-]+$/g, '') || 'Workshop Mod';
+    return `${safeName}${suffix}`;
+}
+
 // Refactored mod download logic
 async function performModDownload(modId, modName, instanceName, { skipDownload = false } = {}) {
 
@@ -190,7 +216,8 @@ async function performModDownload(modId, modName, instanceName, { skipDownload =
         // --- END NEW LOGIC ---
 
         fse.mkdirpSync(instanceModsPath);
-        const safeFileName = `${modId}.pak`;
+        const fileBaseName = createModFileBaseName(modName, modId);
+        const safeFileName = `${fileBaseName}.pak`;
         const destinationPath = path.join(instanceModsPath, safeFileName);
         
         fse.moveSync(pakFile, destinationPath, { overwrite: true });
@@ -202,7 +229,7 @@ async function performModDownload(modId, modName, instanceName, { skipDownload =
             if (inst.name === instanceName) {
                 const mods = inst.mods || [];
                 if (!mods.some(m => String(m.id) === String(modId))) {
-                    return { ...inst, mods: [...mods, { id: modId, name: modName, fileName: String(modId), enabled: true }] };
+                    return { ...inst, mods: [...mods, { id: modId, name: modName, fileName: fileBaseName, enabled: true }] };
                 }
             }
             return inst;
@@ -370,9 +397,121 @@ try {
 const instancesDir = path.join(app.getPath('userData'), 'instances');
 const steamcmdDir = path.join(app.getPath('userData'), 'steamcmd');
 const steamcmdExecutable = path.join(steamcmdDir, process.platform === 'win32' ? 'steamcmd.exe' : 'steamcmd.sh');
+const modDirectoryWatchers = new Map();
+const modReconcileTimers = new Map();
 
 if (!fs.existsSync(instancesDir)) fse.mkdirpSync(instancesDir);
 if (!fs.existsSync(steamcmdDir)) fse.mkdirpSync(steamcmdDir);
+
+function getManagedModEntryName(mod) {
+    if (mod.external) return mod.entryName;
+    const storedFileName = mod.fileName || String(mod.name || '').replace(/\.disabled$/, '');
+    return `${storedFileName}.pak${mod.enabled === false ? '.disabled' : ''}`;
+}
+
+function createExternalMod(entry) {
+    const entryName = entry.name;
+    const isDirectory = entry.isDirectory();
+    const disabled = !isDirectory && /\.pak\.disabled$/i.test(entryName);
+    const fileName = isDirectory
+        ? entryName
+        : entryName.replace(/\.pak(?:\.disabled)?$/i, '');
+    return {
+        id: `external:${Buffer.from(entryName).toString('base64url')}`,
+        name: entryName,
+        fileName,
+        entryName,
+        enabled: !disabled,
+        external: true,
+        isDirectory
+    };
+}
+
+function reconcileInstanceMods(instanceName) {
+    const instances = store.get('instances', []);
+    const instanceIndex = instances.findIndex(instance => instance.name === instanceName);
+    if (instanceIndex === -1) return;
+    const instance = instances[instanceIndex];
+
+    const modsPath = path.join(instancesDir, instanceName, 'mods');
+    fse.mkdirpSync(modsPath);
+    let entries;
+    try {
+        entries = fs.readdirSync(modsPath, { withFileTypes: true })
+            .filter(entry => entry.isDirectory() || (entry.isFile() && /\.pak(?:\.disabled)?$/i.test(entry.name)));
+    } catch (error) {
+        console.error(`Could not scan mods for ${instanceName}:`, error);
+        return;
+    }
+
+    const entriesByName = new Map(entries.map(entry => [entry.name, entry]));
+    const currentMods = instance.mods || [];
+    const reconciledMods = [];
+    const claimedEntries = new Set();
+
+    currentMods.filter(mod => !mod.external).forEach(mod => {
+        const expectedName = getManagedModEntryName(mod);
+        const alternateName = expectedName.endsWith('.pak')
+            ? `${expectedName}.disabled`
+            : expectedName.replace(/\.disabled$/, '');
+        const actualName = entriesByName.has(expectedName)
+            ? expectedName
+            : entriesByName.has(alternateName) ? alternateName : null;
+        if (!actualName) return;
+
+        claimedEntries.add(actualName);
+        reconciledMods.push({
+            ...mod,
+            enabled: !actualName.endsWith('.disabled')
+        });
+    });
+
+    entries.forEach(entry => {
+        if (!claimedEntries.has(entry.name)) reconciledMods.push(createExternalMod(entry));
+    });
+
+    if (JSON.stringify(currentMods) === JSON.stringify(reconciledMods)) return;
+    const updatedInstances = [...instances];
+    updatedInstances[instanceIndex] = { ...instance, mods: reconciledMods };
+    store.set('instances', updatedInstances);
+    sendToWindow(mainWindow, 'instance-updated');
+    getWorkshopWindows(instanceName).forEach(win => sendToWindow(win, 'set-installed-mods', reconciledMods));
+}
+
+function scheduleModReconcile(instanceName) {
+    clearTimeout(modReconcileTimers.get(instanceName));
+    modReconcileTimers.set(instanceName, setTimeout(() => {
+        modReconcileTimers.delete(instanceName);
+        reconcileInstanceMods(instanceName);
+    }, 150));
+}
+
+function watchInstanceMods(instanceName) {
+    const existingWatcher = modDirectoryWatchers.get(instanceName);
+    if (existingWatcher) existingWatcher.close();
+
+    const modsPath = path.join(instancesDir, instanceName, 'mods');
+    fse.mkdirpSync(modsPath);
+    reconcileInstanceMods(instanceName);
+    try {
+        const watcher = fs.watch(modsPath, () => scheduleModReconcile(instanceName));
+        watcher.on('error', error => console.error(`Mods watcher failed for ${instanceName}:`, error));
+        modDirectoryWatchers.set(instanceName, watcher);
+    } catch (error) {
+        console.error(`Could not watch mods for ${instanceName}:`, error);
+    }
+}
+
+function unwatchInstanceMods(instanceName) {
+    modDirectoryWatchers.get(instanceName)?.close();
+    modDirectoryWatchers.delete(instanceName);
+    clearTimeout(modReconcileTimers.get(instanceName));
+    modReconcileTimers.delete(instanceName);
+}
+
+function watchAllInstanceMods() {
+    store.get('instances', []).forEach(instance => watchInstanceMods(instance.name));
+}
 
 async function downloadAndExtractClient(versionTag, instancePath, reportProgress = () => {}) {
     const releaseUrl = `https://api.github.com/repos/OpenStarbound/OpenStarbound/releases/tags/${versionTag}`;
@@ -675,6 +814,7 @@ function createWindow () {
 
 app.whenReady().then(() => {
     createWindow();
+    watchAllInstanceMods();
     mainWindow.webContents.on('did-finish-load', () => {
         if (mainWindow.webContents.getURL().includes('setup.html')) return;
         ensureSteamCMD();
@@ -713,6 +853,12 @@ app.on('before-quit', event => {
 });
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+app.on('will-quit', () => {
+    modDirectoryWatchers.forEach(watcher => watcher.close());
+    modDirectoryWatchers.clear();
+    modReconcileTimers.forEach(timer => clearTimeout(timer));
+    modReconcileTimers.clear();
 });
 
 ipcMain.handle('select-pak', async () => {
@@ -763,6 +909,7 @@ ipcMain.handle('create-instance', async (event, { value: instanceName, descripti
         }
 
         store.set('instances', [...instances, { name: instanceName, description: instanceDescription, version: version.tag, icon: icon || 'fa-rocket', mods: [], clientPath: instancePath }]);
+        watchInstanceMods(instanceName);
         reportProgress({ phase: 'complete', message: `${instanceName} is ready to play.`, percent: 100, indeterminate: false });
         return instanceName;
     } catch (error) {
@@ -1143,10 +1290,16 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
                 if (String(mod.id) === String(modId)) {
                     const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
                     const storedFileName = mod.fileName || mod.name.replace('.disabled', '');
-                    const currentFileName = enabled ? `${storedFileName}.pak.disabled` : `${storedFileName}.pak`;
+                    const currentFileName = mod.external
+                        ? mod.entryName
+                        : enabled ? `${storedFileName}.pak.disabled` : `${storedFileName}.pak`;
                     const oldModPath = path.join(instanceModsPath, currentFileName);
 
-                    const targetFileName = enabled ? `${storedFileName}.pak` : `${storedFileName}.pak.disabled`;
+                    const targetFileName = mod.external
+                        ? enabled
+                            ? mod.entryName.replace(/\.disabled$/i, '')
+                            : `${mod.entryName}.disabled`
+                        : enabled ? `${storedFileName}.pak` : `${storedFileName}.pak.disabled`;
                     const newModPath = path.join(instanceModsPath, targetFileName);
 
                     try {
@@ -1160,7 +1313,9 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
                         return mod;
                     }
 
-                    return { ...mod, enabled: enabled };
+                    return mod.external
+                        ? { ...mod, name: targetFileName, entryName: targetFileName, enabled }
+                        : { ...mod, enabled };
                 }
                 return mod;
             });
@@ -1200,6 +1355,7 @@ ipcMain.handle('update-instance', async (event, oldName, newName, newDescription
 
     try {
         if (oldName !== newName) {
+            unwatchInstanceMods(oldName);
             if (fs.existsSync(oldInstancePath)) {
                 fse.moveSync(oldInstancePath, newInstancePath);
                 console.log(`Renamed instance directory from ${oldInstancePath} to ${newInstancePath}`);
@@ -1210,10 +1366,12 @@ ipcMain.handle('update-instance', async (event, oldName, newName, newDescription
         const updatedInstances = [...instances];
         updatedInstances[instanceIndex] = updatedInstance;
         store.set('instances', updatedInstances);
+        if (oldName !== newName) watchInstanceMods(newName);
         mainWindow.webContents.send('instance-updated');
         return true;
     } catch (error) {
         console.error('Failed to update instance:', error);
+        if (oldName !== newName && fs.existsSync(oldInstancePath)) watchInstanceMods(oldName);
         dialog.showErrorBox('Instance Update Failed', error.message);
         return false;
     }
@@ -1343,6 +1501,7 @@ ipcMain.handle('delete-instance', async (event, instanceName) => {
     const logPath = path.join(instancePath, 'logs', 'starbound.log');
 
     try {
+        unwatchInstanceMods(instanceName);
         if (fs.existsSync(instancePath)) {
             fs.unwatchFile(logPath);
             fse.removeSync(instancePath);
@@ -1354,6 +1513,7 @@ ipcMain.handle('delete-instance', async (event, instanceName) => {
         return true;
     } catch (error) {
         console.error('Failed to delete instance:', error);
+        if (fs.existsSync(instancePath)) watchInstanceMods(instanceName);
         dialog.showErrorBox('Instance Deletion Failed', error.message);
         return false;
     }
@@ -1429,7 +1589,13 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
     const disabledModFilePath = path.join(instanceModsPath, `${storedFileName}.pak.disabled`);
 
     try {
-        if (fs.existsSync(modFilePath)) {
+        if (modToDelete.external && modToDelete.entryName) {
+            const externalPath = path.join(instanceModsPath, modToDelete.entryName);
+            if (fs.existsSync(externalPath)) {
+                fse.removeSync(externalPath);
+                console.log(`Deleted external mod: ${externalPath}`);
+            }
+        } else if (fs.existsSync(modFilePath)) {
             fse.removeSync(modFilePath);
             console.log(`Deleted mod file: ${modFilePath}`);
         } else if (fs.existsSync(disabledModFilePath)) {

@@ -346,6 +346,61 @@ header h1 {
     gap: var(--spacing-sm);
 }
 
+.installed-mods-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.installed-mod-search-wrap {
+    position: relative;
+    flex: 1;
+    max-width: 460px;
+}
+
+.installed-mod-search-wrap i {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    z-index: 1;
+    color: var(--text-secondary);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.installed-mod-search-wrap input {
+    height: 36px;
+    margin: 0;
+    padding-left: 36px;
+}
+
+.installed-mod-count {
+    flex-shrink: 0;
+    padding: 5px 9px;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border-radius: 999px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+    .installed-mods-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .installed-mod-search-wrap {
+        max-width: none;
+    }
+
+    .installed-mod-count {
+        align-self: flex-start;
+    }
+}
+
 .mod-item {
     background-color: var(--bg-tertiary);
     padding: var(--spacing-sm);
@@ -355,8 +410,34 @@ header h1 {
     align-items: center;
 }
 
+.mod-item[hidden] {
+    display: none;
+}
+
 .mod-item .mod-name {
     flex-grow: 1;
+}
+
+.mod-flair {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    vertical-align: 1px;
+}
+
+.mod-flair.external {
+    color: #d7b8ff;
+    background: rgba(156, 90, 220, 0.2);
+    border: 1px solid rgba(181, 125, 235, 0.45);
+}
+
+.mod-flair.folder {
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
 }
 
 .mod-controls {

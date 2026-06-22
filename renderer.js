@@ -30,6 +30,12 @@ window.addEventListener('DOMContentLoaded', () => {
     let runningInstances = [];
     let toastHideTimer = null;
 
+    function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, character => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[character]);
+    }
+
     function formatBytes(bytes) {
         if (!Number.isFinite(bytes) || bytes <= 0) return '';
         const units = ['B', 'KB', 'MB', 'GB'];
@@ -210,34 +216,51 @@ window.addEventListener('DOMContentLoaded', () => {
             
         `;
 
-        // instanceDetailsBottom.innerHTML = `
-        instanceDetailsBottomToAdd = `
+        const installedModCount = selectedInstance.mods?.length || 0;
+        let instanceDetailsBottomToAdd = `
             <div id="tab-content" class="tab-content">
                 <div id="mods-tab" class="tab-pane active">
+                    <div class="installed-mods-toolbar">
+                        <div class="installed-mod-search-wrap">
+                            <i class="fas fa-search" aria-hidden="true"></i>
+                            <input type="text" id="installed-mod-search" placeholder="Filter installed mods…" aria-label="Filter installed mods" ${installedModCount === 0 ? 'disabled' : ''}>
+                        </div>
+                        <span id="installed-mod-count" class="installed-mod-count" data-total="${installedModCount}">${installedModCount} ${installedModCount === 1 ? 'mod' : 'mods'} installed</span>
+                    </div>
                     <div id="mods-list">
         `;
-        console.info(instanceDetailsBottom);
 
-            if (selectedInstance.mods && selectedInstance.mods.length > 0) {
-                selectedInstance.mods.forEach(mod => {
-
-                    instanceDetailsBottomToAdd += `<div class="mod-item">`;
-                    const displayName = mod.enabled ? mod.name : `${mod.name} (Disabled)`;
-                    const importedStatus = mod.imported ? ' (Imported)' : '';
-
-                    instanceDetailsBottomToAdd += `
-                        <span class="mod-name">${displayName} (ID: ${mod.id})${importedStatus}</span>
-                        <div class="mod-controls">
+        if (installedModCount > 0) {
+            selectedInstance.mods.forEach(mod => {
+                const displayName = mod.external
+                    ? mod.name
+                    : mod.enabled ? mod.name : `${mod.name} (Disabled)`;
+                const safeDisplayName = escapeHtml(displayName);
+                const importedStatus = mod.imported ? ' (Imported)' : '';
+                const identifier = mod.external ? '' : ` (ID: ${mod.id})`;
+                const externalFlair = mod.external ? '<span class="mod-flair external">External</span>' : '';
+                const folderFlair = mod.isDirectory ? '<span class="mod-flair folder">Folder</span>' : '';
+                const toggleControl = mod.isDirectory ? '' : `
                             <label class="switch">
                                 <input type="checkbox" class="mod-toggle" data-mod-id="${mod.id}" ${mod.enabled ? 'checked' : ''}>
                                 <span class="slider round"></span>
-                            </label>
+                            </label>`;
+                instanceDetailsBottomToAdd += `
+                    <div class="mod-item">
+                        <span class="mod-name">${safeDisplayName}${identifier}${importedStatus} ${externalFlair}${folderFlair}</span>
+                        <div class="mod-controls">
+                            ${toggleControl}
                             <button class="delete-mod-btn danger" data-mod-id="${mod.id}"><i class="fas fa-trash"></i> Delete</button>
                         </div>
-                        </div>
-                    `;    
-                });
-                instanceDetailsBottomToAdd += `
+                    </div>
+                `;
+            });
+        } else {
+            instanceDetailsBottomToAdd += '<p class="empty-state">No mods installed.</p>';
+        }
+
+        instanceDetailsBottomToAdd += `
+                        <p id="installed-mod-search-empty" class="empty-state" hidden>No installed mods match your search.</p>
                     </div>
                 </div>
                 <div id="logs-tab" class="tab-pane">
@@ -245,19 +268,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>`;
 
-            instanceDetailsBottom.innerHTML = instanceDetailsBottomToAdd;
-            } else {
-                instanceDetailsBottomToAdd += `
-                <p>No Mods Installed!</p>
-                        </div>
-                    </div>
-                    <div id="logs-tab" class="tab-pane">
-                        <pre id="log-content"></pre>
-                    </div>
-                </div>`;
-
-                instanceDetailsBottom.innerHTML = instanceDetailsBottomToAdd;
-            }
+        instanceDetailsBottom.innerHTML = instanceDetailsBottomToAdd;
         
     }
 
@@ -267,6 +278,30 @@ window.addEventListener('DOMContentLoaded', () => {
             selectedInstanceName = target.dataset.instanceName;
             loadInstances(); // Reload to update the active state and details
         }
+    });
+
+    instanceDetails.addEventListener('input', event => {
+        if (event.target.id !== 'installed-mod-search') return;
+
+        const query = event.target.value.trim().toLowerCase();
+        const modItems = Array.from(instanceDetails.querySelectorAll('#mods-list .mod-item'));
+        let visibleCount = 0;
+        modItems.forEach(item => {
+            const matches = !query || item.querySelector('.mod-name').textContent.toLowerCase().includes(query);
+            item.hidden = !matches;
+            if (matches) visibleCount++;
+        });
+
+        const count = document.getElementById('installed-mod-count');
+        const total = Number(count?.dataset.total || 0);
+        if (count) {
+            count.textContent = query
+                ? `${visibleCount} of ${total} shown`
+                : `${total} ${total === 1 ? 'mod' : 'mods'} installed`;
+        }
+
+        const emptyResult = document.getElementById('installed-mod-search-empty');
+        if (emptyResult) emptyResult.hidden = !query || visibleCount > 0;
     });
 
     instanceDetails.addEventListener('click', async (event) => {
