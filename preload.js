@@ -7,14 +7,19 @@ const electronAPI = {
   deleteInstance: (instanceName) => ipcRenderer.invoke('delete-instance', instanceName),
   launchGame: (instanceName) => ipcRenderer.invoke('launch-game', instanceName),
   getOpenStarboundVersions: () => ipcRenderer.invoke('get-openstarbound-versions'),
+  onClientDownloadProgress: (callback) => ipcRenderer.on('client-download-progress', (_event, progress) => callback(progress)),
   onInstanceUpdate: (callback) => ipcRenderer.on('instance-updated', () => callback()),
   updateModStatus: (instanceName, modId, enabled) => ipcRenderer.invoke('update-mod-status', instanceName, modId, enabled),
   deleteMod: (instanceName, modId) => ipcRenderer.invoke('delete-mod', instanceName, modId),
   openWorkshopWindow: (instanceName) => ipcRenderer.invoke('open-workshop-window', instanceName),
-  searchWorkshop: (query, page) => ipcRenderer.invoke('search-workshop', query, page),
-  getPopularMods: (page) => ipcRenderer.invoke('get-popular-mods', page),
+  searchWorkshop: (query, page, kind) => ipcRenderer.invoke('search-workshop', query, page, kind),
+  getPopularMods: (page, kind) => ipcRenderer.invoke('get-popular-mods', page, kind),
+  getCollection: (collectionId) => ipcRenderer.invoke('get-collection', collectionId),
   downloadMod: (args) => ipcRenderer.invoke('download-mod', args),
   downloadMods: (modsToDownload, instanceName) => ipcRenderer.invoke('download-mods', modsToDownload, instanceName),
+  downloadCollection: (collectionId, instanceName) => ipcRenderer.invoke('download-collection', collectionId, instanceName),
+  getDownloadState: (instanceName) => ipcRenderer.invoke('get-download-state', instanceName),
+  onDownloadStatusUpdate: (callback) => ipcRenderer.on('download-status-update', (_event, status) => callback(status)),
   openInputDialog: (options) => ipcRenderer.invoke('open-input-dialog', options),
   openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
   selectPak: () => ipcRenderer.invoke('select-pak'),
@@ -32,7 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', electronAPI);
 contextBridge.exposeInMainWorld('workshopAPI', {
   onSetInstanceName: (callback) => ipcRenderer.on('set-instance-name', (_event, name) => callback(name)),
   onSetInstalledMods: (callback) => ipcRenderer.on('set-installed-mods', (_event, mods) => callback(mods)),
-  onDownloadStatusUpdate: (callback) => ipcRenderer.on('download-status-update', (_event, status) => callback(status))
+  onDownloadStatusUpdate: (callback) => ipcRenderer.on('download-status-update', (_event, status) => callback(status)),
+  onDownloadStateUpdate: (callback) => ipcRenderer.on('download-state-update', (_event, status) => callback(status))
 });
 
 contextBridge.exposeInMainWorld('inputDialogAPI', {

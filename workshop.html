@@ -7,21 +7,46 @@
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
-<body>
+<body class="workshop-body">
     <header>
         <h1 id="instance-name-header">Steam Workshop Browser</h1>
+        <nav class="workshop-tabs" aria-label="Workshop content type">
+            <button id="mods-tab" class="workshop-tab active" data-kind="mod">Mods</button>
+            <button id="collections-tab" class="workshop-tab" data-kind="collection">Collections</button>
+        </nav>
         <div class="search-bar">
-            <input type="text" id="search-input" placeholder="Search mods...">
+            <input type="text" id="search-input" placeholder="Search mods or paste a Workshop ID...">
             <button id="search-button" class="primary"><i class="fas fa-search"></i> Search</button>
             <button id="download-selected-button" class="secondary"><i class="fas fa-cloud-download-alt"></i> Download Selected</button>
+            <button id="download-queue-button" class="secondary queue-button" hidden><i class="fas fa-list"></i> Queue <span id="download-queue-badge" class="queue-badge">0</span></button>
         </div>
         <div id="download-status" class="download-status" style="display: none;"></div>
     </header>
     <div class="content" id="content-container">
+        <section id="collection-detail" class="collection-detail" hidden>
+            <button id="back-to-collections" class="secondary"><i class="fas fa-arrow-left"></i> Collections</button>
+            <div>
+                <h2 id="collection-title"></h2>
+                <p id="collection-summary"></p>
+            </div>
+            <button id="download-collection-button" class="primary"><i class="fas fa-cloud-download-alt"></i> Download Collection</button>
+        </section>
         <div id="mod-list" class="mod-list">
             <!-- Mods will be loaded here -->
             
         </div>
+    </div>
+    <div id="download-queue-dialog" class="queue-overlay" aria-hidden="true">
+        <section class="queue-dialog" role="dialog" aria-modal="true" aria-labelledby="download-queue-title">
+            <div class="queue-dialog-header">
+                <div>
+                    <h2 id="download-queue-title">Mod download queue</h2>
+                    <p id="download-queue-summary">No mod downloads yet.</p>
+                </div>
+                <button class="queue-close-button secondary" aria-label="Close download queue"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="download-queue-list" class="queue-list"></div>
+        </section>
     </div>
     <script src="./workshop-renderer.js"></script>
 </body>

@@ -11,6 +11,7 @@
     <header>
         <h1>Starbase Launcher</h1>
         <div class="header-actions">
+            <button id="download-queue-button" class="secondary queue-button" hidden><i class="fas fa-list"></i> Downloads <span id="download-queue-badge" class="queue-badge">0</span></button>
             <button id="new-instance-button" class="primary"><i class="fas fa-plus"></i> New Instance</button>
             <button id="browse-workshop-button" class="secondary"><i class="fas fa-store"></i> Browse Workshop</button>
             <button id="import-mods-button" class="secondary"><i class="fas fa-plus"></i> Import</button>
@@ -28,11 +29,32 @@
             <div id="instance-details-bottom" class="instance-details-panel grow"></div>
         </div>
 
-        </div>
     </div>
 
-    <div id="loadingOverlay" class="loading-overlay">
-        <div id="loadingSpinner" class="spinner"></div>
+    <aside id="loadingOverlay" class="download-toast" role="status" aria-live="polite" aria-hidden="true">
+        <div class="download-toast-heading">
+            <div>
+                <strong id="downloadProgressTitle">Creating instance</strong>
+                <p id="downloadProgressMessage">Preparing download…</p>
+            </div>
+            <span id="downloadProgressPercent">0%</span>
+        </div>
+        <div class="progress-track" id="downloadProgressTrack" role="progressbar" aria-label="OpenStarbound download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="downloadProgressBar" class="progress-bar"></div>
+        </div>
+        <div id="downloadProgressDetails" class="download-progress-details"></div>
+    </aside>
+    <div id="download-queue-dialog" class="queue-overlay" aria-hidden="true">
+        <section class="queue-dialog" role="dialog" aria-modal="true" aria-labelledby="download-queue-title">
+            <div class="queue-dialog-header">
+                <div>
+                    <h2 id="download-queue-title">Mod download queue</h2>
+                    <p id="download-queue-summary">No mod downloads yet.</p>
+                </div>
+                <button class="queue-close-button secondary" aria-label="Close download queue"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="download-queue-list" class="queue-list"></div>
+        </section>
     </div>
     <script src="./renderer.js"></script>
 </body>

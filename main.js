@@ -12,37 +12,121 @@ const fse = require('fs-extra');
 const store = new Store();
 
 let activeDownloads = 0;
+let allowQuitWithDownloads = false;
 const downloadQueue = [];
-let totalModsToDownload = 0;
 const failedDownloads = [];
 const retryQueue = [];
+const downloadJobs = new Map();
 const MAX_RETRIES = 5;
 
 const SHOW_MENUBAR = false;
 
-// Function to send download status updates to the workshop window
-function updateDownloadStatus() {
-    if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('download-status-update', {
-            active: activeDownloads,
-            total: totalModsToDownload
-        });
-    }
-    // Also send to workshop window if it's open
-    const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
-    if (workshopWindow && workshopWindow.webContents) {
-        workshopWindow.webContents.send('download-status-update', {
-            active: activeDownloads,
-            total: totalModsToDownload
-        });
+function getDownloadJobKey(instanceName, modId) {
+    return `${instanceName}:${modId}`;
+}
+
+function getDownloadState(instanceName = null) {
+    const jobs = Array.from(downloadJobs.values())
+        .filter(job => !instanceName || job.instanceName === instanceName)
+        .map(job => ({ ...job }));
+    const pending = jobs.filter(job => ['queued', 'downloading', 'retrying'].includes(job.status));
+    return {
+        jobs,
+        active: jobs.filter(job => job.status === 'downloading').length,
+        pending: pending.length,
+        completed: jobs.filter(job => job.status === 'completed').length,
+        failed: jobs.filter(job => job.status === 'failed').length,
+        total: jobs.length
+    };
+}
+
+function sendToWindow(window, channel, payload) {
+    if (window && !window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send(channel, payload);
     }
 }
 
-// Refactored mod download logic
-async function performModDownload(modId, modName, instanceName) {
-    if (!fs.existsSync(steamcmdExecutable)) {
-        throw new Error('SteamCMD executable not found. Please ensure it was installed correctly.');
+function getWorkshopWindows(instanceName = null) {
+    return BrowserWindow.getAllWindows().filter(win =>
+        win.workshopInstanceName && (!instanceName || win.workshopInstanceName === instanceName)
+    );
+}
+
+// Downloads live in the main process. Any renderer can disappear and reconnect
+// without affecting the queue.
+function updateDownloadStatus() {
+    const state = getDownloadState();
+    sendToWindow(mainWindow, 'download-status-update', state);
+    getWorkshopWindows()
+        .forEach(win => {
+            sendToWindow(win, 'download-status-update', state);
+            sendToWindow(win, 'download-state-update', state);
+        });
+}
+
+function queueMods(mods, instanceName, batchId = null) {
+    const instances = store.get('instances', []);
+    const instance = instances.find(item => item.name === instanceName);
+    if (!instance) throw new Error(`Instance '${instanceName}' was not found.`);
+
+    const installedIds = new Set((instance.mods || []).map(mod => String(mod.id)));
+    let added = 0;
+    for (const mod of mods) {
+        const rawModId = mod.id || mod.modId;
+        if (!rawModId) continue;
+        const modId = String(rawModId);
+        const modName = mod.name || mod.modName || `Workshop item ${modId}`;
+        const key = getDownloadJobKey(instanceName, modId);
+        const existing = downloadJobs.get(key);
+        if (installedIds.has(modId) || (existing && ['queued', 'downloading', 'retrying'].includes(existing.status))) {
+            continue;
+        }
+        downloadJobs.set(key, { modId, modName, instanceName, status: 'queued', attempts: 0, error: null });
+        downloadQueue.push({ modId, modName, instanceName, attempts: 0, batchId });
+        added++;
     }
+    updateDownloadStatus();
+    processDownloadQueue();
+    return added;
+}
+
+async function ensureSteamCmdReady() {
+    if (!fs.existsSync(steamcmdExecutable)) {
+        const installed = await ensureSteamCMD();
+        if (!installed || !fs.existsSync(steamcmdExecutable)) {
+            throw new Error('SteamCMD could not be installed. Check your network connection and try again.');
+        }
+    }
+    fs.chmodSync(steamcmdExecutable, '755');
+}
+
+async function runSteamCmdDownloads(mods) {
+    await ensureSteamCmdReady();
+    const args = [
+        '+force_install_dir', steamcmdDir,
+        '+login', 'anonymous'
+    ];
+    mods.forEach(mod => args.push('+workshop_download_item', '211820', mod.modId));
+    args.push('+quit');
+
+    console.log(`Downloading ${mods.length} mod${mods.length === 1 ? '' : 's'} in one SteamCMD session...`);
+    await new Promise((resolve, reject) => {
+        const steamcmdProcess = spawn(steamcmdExecutable, args);
+        steamcmdProcess.stdout.on('data', data => console.log(`steamcmd: ${data}`));
+        steamcmdProcess.stderr.on('data', data => console.error(`steamcmd stderr: ${data}`));
+        steamcmdProcess.on('close', code => {
+            if (code !== 0) {
+                return reject(new Error(`SteamCMD exited with code ${code}. Check SteamCMD logs for details.`));
+            }
+            console.log('SteamCMD session finished. Checking downloaded files.');
+            resolve();
+        });
+        steamcmdProcess.on('error', err => reject(new Error(`Failed to start SteamCMD: ${err.message}`)));
+    });
+}
+
+// Refactored mod download logic
+async function performModDownload(modId, modName, instanceName, { skipDownload = false } = {}) {
 
     const instancePath = path.join(instancesDir, instanceName);
     const instanceModsPath = path.join(instancePath, 'mods');
@@ -52,35 +136,9 @@ async function performModDownload(modId, modName, instanceName) {
     const fallbackModPath = path.join(steamcmdDir, 'steamapps', 'workshop', 'content', '211820', modId);
 
     try {
-        fs.chmodSync(steamcmdExecutable, '755');
-
-        console.log(`Downloading mod ${modId} using steamcmd...`);
-        await new Promise((resolve, reject) => {
-            const steamcmdProcess = spawn(steamcmdExecutable, [
-                '+force_install_dir', steamcmdDir,
-                '+login', 'anonymous',
-                '+workshop_download_item', '211820', modId,
-                '+quit'
-            ]);
-
-            steamcmdProcess.stdout.on('data', (data) => {
-                console.log(`steamcmd: ${data}`);
-            });
-
-            steamcmdProcess.stderr.on('data', (data) => {
-                console.error(`steamcmd stderr: ${data}`);
-            });
-
-            steamcmdProcess.on('close', (code) => {
-                if (code !== 0) {
-                    console.error(`steamcmd process exited with code ${code}`);
-                    return reject(new Error(`SteamCMD process for mod ${modName} (${modId}) exited with code ${code}. Check SteamCMD logs for details.`));
-                }
-                console.log(`steamcmd process finished. Checking for downloaded files.`);
-                resolve();
-            });
-            steamcmdProcess.on('error', (err) => reject(new Error(`Failed to spawn SteamCMD process for mod ${modName} (${modId}): ${err.message}`))); // Catch spawn errors
-        });
+        if (!skipDownload) {
+            await runSteamCmdDownloads([{ modId, modName, instanceName }]);
+        }
 
         let finalModPath;
         console.log(`Checking for mod at primary path: ${downloadedModPath}`);
@@ -131,7 +189,9 @@ async function performModDownload(modId, modName, instanceName) {
         }
         // --- END NEW LOGIC ---
 
-        const destinationPath = path.join(instanceModsPath, `${modName}.pak`);
+        fse.mkdirpSync(instanceModsPath);
+        const safeFileName = `${modId}.pak`;
+        const destinationPath = path.join(instanceModsPath, safeFileName);
         
         fse.moveSync(pakFile, destinationPath, { overwrite: true });
         console.log(`Moved ${pakFile} to ${destinationPath}`);
@@ -141,8 +201,8 @@ async function performModDownload(modId, modName, instanceName) {
         const updatedInstances = instances.map(inst => {
             if (inst.name === instanceName) {
                 const mods = inst.mods || [];
-                if (!mods.some(m => m.id === modId)) {
-                    return { ...inst, mods: [...mods, { id: modId, name: modName, enabled: true }] };
+                if (!mods.some(m => String(m.id) === String(modId))) {
+                    return { ...inst, mods: [...mods, { id: modId, name: modName, fileName: String(modId), enabled: true }] };
                 }
             }
             return inst;
@@ -150,12 +210,9 @@ async function performModDownload(modId, modName, instanceName) {
         store.set('instances', updatedInstances);
 
         // Send updated installed mods to the workshop window
-        const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
-        if (workshopWindow) {
-            const currentInstance = updatedInstances.find(inst => inst.name === instanceName);
-            if (currentInstance) {
-                workshopWindow.webContents.send('set-installed-mods', currentInstance.mods);
-            }
+        const currentInstance = updatedInstances.find(inst => inst.name === instanceName);
+        if (currentInstance) {
+            getWorkshopWindows(instanceName).forEach(win => sendToWindow(win, 'set-installed-mods', currentInstance.mods));
         }
         
         fse.remove(finalModPath).catch(err => console.error(`Failed to clean up mod directory: ${err}`));
@@ -169,50 +226,119 @@ async function performModDownload(modId, modName, instanceName) {
 }
 
 // Process the download queue with a concurrency limit
-const MAX_CONCURRENT_DOWNLOADS = 3; // Limit concurrent downloads
+// SteamCMD writes shared manifests and workshop folders. Running multiple copies
+// against the same install directory causes intermittent collection failures.
+const MAX_CONCURRENT_DOWNLOADS = 1;
+const STEAMCMD_BATCH_SIZE = 20;
+
+async function performDownloadGroup(mods) {
+    if (mods.length === 1) {
+        return Promise.allSettled([
+            performModDownload(mods[0].modId, mods[0].modName, mods[0].instanceName)
+        ]);
+    }
+
+    let commandError = null;
+    try {
+        await runSteamCmdDownloads(mods);
+    } catch (error) {
+        // SteamCMD can return a non-zero code after downloading only part of a
+        // batch. Inspect every item so completed downloads are still kept.
+        commandError = error;
+        console.error('SteamCMD batch reported an error; checking individual items:', error);
+    }
+
+    return Promise.allSettled(mods.map(async mod => {
+        try {
+            return await performModDownload(mod.modId, mod.modName, mod.instanceName, { skipDownload: true });
+        } catch (error) {
+            throw commandError || error;
+        }
+    }));
+}
 
 async function processDownloadQueue() {
     while ((downloadQueue.length > 0 || retryQueue.length > 0) && activeDownloads < MAX_CONCURRENT_DOWNLOADS) {
-        let modToDownload;
-        if (downloadQueue.length > 0) {
-            modToDownload = downloadQueue.shift();
-            modToDownload.attempts = 0; // Initialize attempts for new downloads
-        } else if (retryQueue.length > 0) {
-            modToDownload = retryQueue.shift();
-        } else {
-            break; // No mods to download or retry
+        const sourceQueue = downloadQueue.length > 0 ? downloadQueue : retryQueue;
+        const firstMod = sourceQueue.shift();
+        const modsToDownload = [firstMod];
+        if (firstMod.batchId) {
+            while (
+                modsToDownload.length < STEAMCMD_BATCH_SIZE &&
+                sourceQueue[0]?.batchId === firstMod.batchId
+            ) {
+                modsToDownload.push(sourceQueue.shift());
+            }
         }
 
-        const { modId, modName, instanceName, attempts } = modToDownload;
+        modsToDownload.forEach(({ modId, instanceName, attempts }) => {
+            const job = downloadJobs.get(getDownloadJobKey(instanceName, modId));
+            if (job) {
+                job.status = 'downloading';
+                job.attempts = attempts + 1;
+                job.error = null;
+            }
+        });
 
         activeDownloads++;
         updateDownloadStatus();
-        console.log(`Starting download for ${modName} (${modId}). Attempt: ${attempts + 1}. Active downloads: ${activeDownloads}`);
+        console.log(`Starting SteamCMD group of ${modsToDownload.length} mod(s).`);
 
-        performModDownload(modId, modName, instanceName)
-            .then(() => {
-                console.log(`Successfully downloaded ${modName}`);
+        performDownloadGroup(modsToDownload)
+            .then(results => {
+                results.forEach((result, index) => {
+                    const mod = modsToDownload[index];
+                    const { modId, modName, instanceName, attempts, batchId } = mod;
+                    const job = downloadJobs.get(getDownloadJobKey(instanceName, modId));
+                    if (result.status === 'fulfilled') {
+                        console.log(`Successfully downloaded ${modName}`);
+                        if (job) job.status = 'completed';
+                    } else if (attempts < MAX_RETRIES) {
+                        const error = result.reason;
+                        console.error(`Error during download of ${modName}:`, error);
+                        retryQueue.push({ modId, modName, instanceName, attempts: attempts + 1, batchId });
+                        if (job) {
+                            job.status = 'retrying';
+                            job.error = error.message;
+                        }
+                    } else {
+                        const error = result.reason;
+                        failedDownloads.push({ modId, modName, instanceName, error: error.message });
+                        if (job) {
+                            job.status = 'failed';
+                            job.error = error.message;
+                        }
+                    }
+                });
             })
-            .catch(err => {
-                console.error(`Error during download of ${modName}:`, err);
-                if (attempts < MAX_RETRIES) {
-                    console.log(`Retrying download for ${modName}. Attempt ${attempts + 1} of ${MAX_RETRIES}.`);
-                    retryQueue.push({ modId, modName, instanceName, attempts: attempts + 1 });
-                } else {
-                    console.error(`Max retries reached for ${modName}. Marking as failed.`);
-                    failedDownloads.push({ modId, modName, instanceName, error: err.message });
-                }
+            .catch(error => {
+                console.error('Unexpected download group failure:', error);
+                modsToDownload.forEach(mod => {
+                    const job = downloadJobs.get(getDownloadJobKey(mod.instanceName, mod.modId));
+                    if (mod.attempts < MAX_RETRIES) {
+                        retryQueue.push({ ...mod, attempts: mod.attempts + 1 });
+                        if (job) {
+                            job.status = 'retrying';
+                            job.error = error.message;
+                        }
+                    } else {
+                        failedDownloads.push({ ...mod, error: error.message });
+                        if (job) {
+                            job.status = 'failed';
+                            job.error = error.message;
+                        }
+                    }
+                });
             })
             .finally(() => {
                 activeDownloads--;
                 updateDownloadStatus();
                 // Trigger main window UI update after each mod download completes
-                mainWindow.webContents.send('instance-updated');
+                sendToWindow(mainWindow, 'instance-updated');
                 processDownloadQueue(); // Try to process next item in queue
             });
     }
     if (downloadQueue.length === 0 && retryQueue.length === 0 && activeDownloads === 0) {
-        totalModsToDownload = 0; // Reset total when all done
         updateDownloadStatus(); // Send final status
 
         if (failedDownloads.length > 0) {
@@ -248,13 +374,14 @@ const steamcmdExecutable = path.join(steamcmdDir, process.platform === 'win32' ?
 if (!fs.existsSync(instancesDir)) fse.mkdirpSync(instancesDir);
 if (!fs.existsSync(steamcmdDir)) fse.mkdirpSync(steamcmdDir);
 
-async function downloadAndExtractClient(versionTag, instancePath) {
+async function downloadAndExtractClient(versionTag, instancePath, reportProgress = () => {}) {
     const releaseUrl = `https://api.github.com/repos/OpenStarbound/OpenStarbound/releases/tags/${versionTag}`;
     const tempDir = app.getPath('temp');
     const downloadPath = path.join(tempDir, `openstarbound-${versionTag}.zip`);
 
     try {
         console.log(`Fetching release info for ${versionTag}...`);
+        reportProgress({ phase: 'release', message: 'Finding the correct game build…', percent: 0, indeterminate: true });
         const response = await axios.get(releaseUrl);
         const release = response.data;
 
@@ -277,15 +404,39 @@ async function downloadAndExtractClient(versionTag, instancePath) {
         }
 
         console.log(`Downloading ${asset.name}...`);
+        reportProgress({ phase: 'download', message: `Starting ${asset.name}…`, percent: 0, bytes: 0, totalBytes: Number(asset.size) || 0 });
         const assetResponse = await axios({ url: asset.browser_download_url, method: 'GET', responseType: 'stream' });
+        const totalBytes = Number(assetResponse.headers['content-length']) || Number(asset.size) || 0;
+        let downloadedBytes = 0;
+        let lastReportedPercent = -1;
+        let lastReportTime = 0;
+        assetResponse.data.on('data', chunk => {
+            downloadedBytes += chunk.length;
+            const percent = totalBytes ? Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)) : null;
+            const now = Date.now();
+            if (percent !== lastReportedPercent || now - lastReportTime >= 250) {
+                lastReportedPercent = percent;
+                lastReportTime = now;
+                reportProgress({
+                    phase: 'download',
+                    message: `Downloading ${asset.name}`,
+                    percent,
+                    bytes: downloadedBytes,
+                    totalBytes,
+                    indeterminate: !totalBytes
+                });
+            }
+        });
         const writer = fs.createWriteStream(downloadPath);
         assetResponse.data.pipe(writer);
         await new Promise((resolve, reject) => {
             writer.on('finish', resolve);
             writer.on('error', reject);
+            assetResponse.data.on('error', reject);
         });
 
         console.log('Download complete. Extracting zip...');
+        reportProgress({ phase: 'extract', message: 'Download complete. Extracting game files…', percent: 100, indeterminate: true });
         if (process.platform === 'win32') {
             await new Promise((resolve, reject) => {
                 yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
@@ -386,10 +537,12 @@ async function downloadAndExtractClient(versionTag, instancePath) {
         }
 
         fs.unlinkSync(downloadPath); // Clean up the downloaded zip
+        reportProgress({ phase: 'configure', message: 'Game files extracted. Finishing setup…', percent: 100, indeterminate: false });
         return instancePath;
 
     } catch (error) {
         console.error('Failed to download and extract client:', error);
+        reportProgress({ phase: 'error', message: error.message, percent: 0, indeterminate: false });
         dialog.showErrorBox('Client Download Failed', error.message);
         if (fs.existsSync(downloadPath)) fs.unlinkSync(downloadPath); // Cleanup on error
         return null;
@@ -397,8 +550,9 @@ async function downloadAndExtractClient(versionTag, instancePath) {
 }
 
 let mainWindow;
+let steamcmdSetupPromise = null;
 
-async function ensureSteamCMD() {
+async function installSteamCMD() {
     if (fs.existsSync(steamcmdExecutable)) {
         console.log('SteamCMD is already installed.');
         return true;
@@ -489,6 +643,16 @@ async function ensureSteamCMD() {
     }
 }
 
+function ensureSteamCMD() {
+    if (fs.existsSync(steamcmdExecutable)) return Promise.resolve(true);
+    if (!steamcmdSetupPromise) {
+        steamcmdSetupPromise = installSteamCMD().finally(() => {
+            steamcmdSetupPromise = null;
+        });
+    }
+    return steamcmdSetupPromise;
+}
+
 function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1024,
@@ -520,6 +684,33 @@ app.whenReady().then(() => {
 app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
+app.on('before-quit', event => {
+    const pendingDownloads = getDownloadState().pending;
+    if (allowQuitWithDownloads || pendingDownloads === 0) return;
+
+    event.preventDefault();
+    const parentWindow = BrowserWindow.getFocusedWindow() || mainWindow;
+    const options = {
+        type: 'warning',
+        title: 'Mods are still downloading',
+        message: `${pendingDownloads} mod${pendingDownloads === 1 ? ' is' : 's are'} still queued or downloading.`,
+        detail: 'Closing Starbase now will stop these downloads. Keep the application open until the queue finishes.',
+        buttons: ['Keep Downloading', 'Quit Anyway'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true
+    };
+    const response = parentWindow && !parentWindow.isDestroyed()
+        ? dialog.showMessageBoxSync(parentWindow, options)
+        : dialog.showMessageBoxSync(options);
+
+    if (response === 1) {
+        allowQuitWithDownloads = true;
+        app.quit();
+    } else if (BrowserWindow.getAllWindows().length === 0) {
+        setImmediate(createWindow);
+    }
+});
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
@@ -535,18 +726,25 @@ ipcMain.handle('select-pak', async () => {
 ipcMain.handle('get-instances', async () => store.get('instances', []));
 
 ipcMain.handle('create-instance', async (event, { value: instanceName, description: instanceDescription, version, icon }) => {
+    const sourceWindow = BrowserWindow.fromWebContents(event.sender);
+    const reportProgress = progress => sendToWindow(sourceWindow, 'client-download-progress', {
+        instanceName,
+        ...progress
+    });
     const instances = store.get('instances', []);
     if (instances.some(inst => inst.name === instanceName)) {
         dialog.showErrorBox('Error', 'An instance with this name already exists.');
+        reportProgress({ phase: 'error', message: 'An instance with this name already exists.', percent: 0, indeterminate: false });
         return null;
     }
 
     const instancePath = path.join(instancesDir, instanceName);
 
     try {
-        const clientPath = await downloadAndExtractClient(version.tag, instancePath);
+        const clientPath = await downloadAndExtractClient(version.tag, instancePath, reportProgress);
         if (!clientPath) {
-            throw new Error('Failed to download and extract client.');
+            if (fs.existsSync(instancePath)) fse.removeSync(instancePath);
+            return null;
         }
 
         const instanceAssetsPath = path.join(instancePath, 'assets');
@@ -565,9 +763,11 @@ ipcMain.handle('create-instance', async (event, { value: instanceName, descripti
         }
 
         store.set('instances', [...instances, { name: instanceName, description: instanceDescription, version: version.tag, icon: icon || 'fa-rocket', mods: [], clientPath: instancePath }]);
+        reportProgress({ phase: 'complete', message: `${instanceName} is ready to play.`, percent: 100, indeterminate: false });
         return instanceName;
     } catch (error) {
         console.error('Failed to create instance:', error);
+        reportProgress({ phase: 'error', message: error.message, percent: 0, indeterminate: false });
         dialog.showErrorBox('Instance Creation Failed', error.message);
         if (fs.existsSync(instancePath)) fse.removeSync(instancePath);
         return null;
@@ -587,6 +787,12 @@ ipcMain.handle('get-openstarbound-versions', async () => {
 });
 
 ipcMain.handle('open-workshop-window', (event, instanceName) => {
+    const existingWindow = getWorkshopWindows(instanceName)[0];
+    if (existingWindow) {
+        if (existingWindow.isMinimized()) existingWindow.restore();
+        existingWindow.focus();
+        return true;
+    }
     const instances = store.get('instances', []);
     const instance = instances.find(inst => inst.name === instanceName);
     const installedMods = instance ? instance.mods : [];
@@ -600,14 +806,17 @@ ipcMain.handle('open-workshop-window', (event, instanceName) => {
             nodeIntegration: false
         }
     });
+    workshopWindow.workshopInstanceName = instanceName;
 
     workshopWindow.setMenuBarVisibility(SHOW_MENUBAR);
 
     workshopWindow.loadFile('workshop.html');
     workshopWindow.webContents.on('did-finish-load', () => {
-        workshopWindow.webContents.send('set-instance-name', instanceName);
-        workshopWindow.webContents.send('set-installed-mods', installedMods);
+        sendToWindow(workshopWindow, 'set-instance-name', instanceName);
+        sendToWindow(workshopWindow, 'set-installed-mods', installedMods);
+        sendToWindow(workshopWindow, 'download-state-update', getDownloadState(instanceName));
     });
+    return true;
 });
 
 ipcMain.handle('open-external-link', (event, url) => {
@@ -763,149 +972,181 @@ function getSteamWorkshopDirectory() {
     }
 }
 
-ipcMain.handle('search-workshop', async (event, query, page = 1) => {
+async function getSteamApiKey() {
     let apiKey = store.get('steamApiKey');
     if (!apiKey) {
         const result = await showInputDialog({
             title: 'Steam Web API Key',
-            message: 'Please enter your Steam Web API key to search the workshop. You can get one from https://steamcommunity.com/dev/apikey',
+            message: 'Please enter your Steam Web API key to browse the workshop. You can get one from https://steamcommunity.com/dev/apikey',
             placeholder: 'Your API Key'
         });
 
         if (result.canceled || !result.value) {
-            dialog.showErrorBox('API Key Required', 'A Steam Web API key is required to search the workshop.');
-            return [];
+            return null;
         }
-        apiKey = result.value;
+        apiKey = result.value.trim();
         store.set('steamApiKey', apiKey);
     }
+    return apiKey;
+}
 
-    let searchUrl;
+function mapWorkshopItem(item, kind = 'mod') {
+    return {
+        id: String(item.publishedfileid),
+        name: item.title || `Workshop item ${item.publishedfileid}`,
+        imageUrl: item.preview_url || '',
+        description: item.short_description || item.file_description || '',
+        itemCount: Number(item.num_children || item.children?.length || 0),
+        kind,
+        url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${item.publishedfileid}`
+    };
+}
+
+async function fetchPublishedFileDetails(ids) {
+    if (!ids.length) return [];
+    const results = [];
+    for (let offset = 0; offset < ids.length; offset += 100) {
+        const chunk = ids.slice(offset, offset + 100);
+        const params = new URLSearchParams();
+        params.append('itemcount', chunk.length);
+        chunk.forEach((id, index) => params.append(`publishedfileids[${index}]`, id));
+        const response = await axios.post(
+            'https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/',
+            params
+        );
+        results.push(...(response.data.response.publishedfiledetails || []));
+    }
+    return results.filter(item => Number(item.result) === 1);
+}
+
+async function fetchCollectionChildIds(collectionId, visited = new Set()) {
+    const id = String(collectionId);
+    if (visited.has(id)) return [];
+    visited.add(id);
+
+    const params = new URLSearchParams();
+    params.append('collectioncount', 1);
+    params.append('publishedfileids[0]', id);
+    const response = await axios.post(
+        'https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/',
+        params
+    );
+    const collection = response.data.response.collectiondetails?.[0];
+    if (!collection || Number(collection.result) !== 1) {
+        throw new Error(`Steam collection ${id} was not found or is not public.`);
+    }
+
+    const childIds = [];
+    for (const child of collection.children || []) {
+        if (Number(child.filetype) === 2) {
+            childIds.push(...await fetchCollectionChildIds(child.publishedfileid, visited));
+        } else {
+            childIds.push(String(child.publishedfileid));
+        }
+    }
+    return [...new Set(childIds)];
+}
+
+async function fetchCollection(collectionId) {
+    const [metadata] = await fetchPublishedFileDetails([String(collectionId)]);
+    const childIds = await fetchCollectionChildIds(collectionId);
+    const details = await fetchPublishedFileDetails(childIds);
+    const byId = new Map(details.map(item => [String(item.publishedfileid), item]));
+    const items = childIds
+        .map(id => byId.get(id))
+        .filter(Boolean)
+        .filter(item => !item.consumer_app_id || Number(item.consumer_app_id) === 211820)
+        .map(item => mapWorkshopItem(item, 'mod'));
+    return {
+        collection: metadata ? mapWorkshopItem(metadata, 'collection') : {
+            id: String(collectionId),
+            name: `Collection ${collectionId}`,
+            imageUrl: '',
+            description: '',
+            kind: 'collection',
+            url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${collectionId}`
+        },
+        items
+    };
+}
+
+async function queryWorkshop({ query = '', page = 1, kind = 'mod' }) {
+    const apiKey = await getSteamApiKey();
+    if (!apiKey) return [];
+    const response = await axios.get('https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/', {
+        params: {
+            key: apiKey,
+            appid: 211820,
+            query_type: 0,
+            search_text: query || undefined,
+            filetype: kind === 'collection' ? 1 : 0,
+            numperpage: 20,
+            page,
+            return_metadata: true,
+            return_children: kind === 'collection'
+        }
+    });
+    return (response.data.response.publishedfiledetails || []).map(item => mapWorkshopItem(item, kind));
+}
+
+ipcMain.handle('search-workshop', async (event, query, page = 1, kind = 'mod') => {
     const isNumericId = /^\d+$/.test(query);
 
-    if (isNumericId) {
-        searchUrl = `https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/`;
-    } else {
-        searchUrl = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/`;
-    }
-
     try {
-        let response;
         if (isNumericId) {
-            const params = new URLSearchParams();
-            params.append('itemcount', 1);
-            params.append('publishedfileids[0]', query);
-            response = await axios.post(searchUrl, params);
-        } else {
-            response = await axios.get(searchUrl, {
-                params: {
-                    key: apiKey,
-                    appid: 211820,
-                    search_text: query,
-                    numperpage: 20, // Fetch 20 items per page
-                    page: page, // Pass the page number to the API
-                    return_metadata: true
-                }
-            });
+            if (kind === 'collection') {
+                const result = await fetchCollection(query);
+                return [result.collection];
+            }
+            const details = await fetchPublishedFileDetails([query]);
+            return details.map(item => mapWorkshopItem(item, 'mod'));
         }
-
-        const details = response.data.response.publishedfiledetails;
-
-        if (!details || details.length === 0 || details[0].result === 9) {
-             dialog.showErrorBox('No Mods Found', `No mods found for your query: "${query}"`);
-            return [];
-        }
-
-        const mods = details.map(mod => ({
-            id: mod.publishedfileid,
-            name: mod.title,
-            imageUrl: mod.preview_url,
-            url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.publishedfileid}`
-        }));
-        return mods;
+        return await queryWorkshop({ query, page, kind });
     } catch (error) {
         console.error('Failed to search workshop:', error);
-        dialog.showErrorBox('Workshop Search Failed', 'Could not fetch or parse search results from the Steam Workshop API.');
-        return [];
+        throw new Error(`Workshop search failed: ${error.message}`);
     }
 });
 
-
-ipcMain.handle('get-popular-mods', async (event, page = 1) => {
-    let apiKey = store.get('steamApiKey');
-    if (!apiKey) {
-        // This part is simplified; in a real app, you'd want to prompt for the key
-        // or handle this more gracefully.
-        dialog.showErrorBox('API Key Required', 'A Steam Web API key is required.');
-        return [];
-    }
-
-    const searchUrl = `https://api.steampowered.com/IPublishedFileService/QueryFiles/v1/`;
-
+ipcMain.handle('get-popular-mods', async (event, page = 1, kind = 'mod') => {
     try {
-        const response = await axios.get(searchUrl, {
-            params: {
-                key: apiKey,
-                appid: 211820, // Starbound's App ID
-                query_type: 0, // Corresponds to 'RankedByVote'
-                page: page,
-                numperpage: 20,
-                return_metadata: true
-            }
-        });
-
-        const details = response.data.response.publishedfiledetails;
-        if (!details || details.length === 0) {
-            return [];
-        }
-
-        const mods = details.map(mod => ({
-            id: mod.publishedfileid,
-            name: mod.title,
-            imageUrl: mod.preview_url,
-            url: `https://steamcommunity.com/sharedfiles/filedetails/?id=${mod.publishedfileid}`
-        }));
-        return mods;
-
+        return await queryWorkshop({ page, kind });
     } catch (error) {
-        console.error('Failed to get popular mods:', error);
-        dialog.showErrorBox('Workshop Fetch Failed', 'Could not fetch popular mods from the Steam Workshop API.');
-        return [];
+        console.error('Failed to get popular workshop content:', error);
+        throw new Error(`Workshop browsing failed: ${error.message}`);
     }
 });
+
+ipcMain.handle('get-collection', async (event, collectionId) => fetchCollection(collectionId));
 
 ipcMain.handle('download-mod', async (event, { modId, modName, instanceName }) => {
-    downloadQueue.push({ modId, modName, instanceName });
-    totalModsToDownload++;
-    updateDownloadStatus();
-    processDownloadQueue();
-    return true;
+    return { added: queueMods([{ id: modId, name: modName }], instanceName) };
 });
 
 ipcMain.handle('download-mods', async (event, modsToDownload, instanceName) => {
-    modsToDownload.forEach(mod => {
-        downloadQueue.push({ modId: mod.id, modName: mod.name, instanceName });
-    });
-    totalModsToDownload += modsToDownload.length;
-    updateDownloadStatus();
-    processDownloadQueue();
-    return true;
+    return { added: queueMods(modsToDownload, instanceName) };
 });
+
+ipcMain.handle('download-collection', async (event, collectionId, instanceName) => {
+    const result = await fetchCollection(collectionId);
+    const batchId = `collection:${collectionId}:${Date.now()}`;
+    return { added: queueMods(result.items, instanceName, batchId), total: result.items.length };
+});
+
+ipcMain.handle('get-download-state', (event, instanceName) => getDownloadState(instanceName));
 
 ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
     const instances = store.get('instances', []);
     const updatedInstances = instances.map(inst => {
         if (inst.name === instanceName) {
             const updatedMods = inst.mods.map(mod => {
-                if (mod.id === modId) {
+                if (String(mod.id) === String(modId)) {
                     const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
-                    
-                    const baseModName = mod.name.replace('.disabled', '');
-                    
-                    const currentFileName = enabled ? `${baseModName}.pak.disabled` : `${baseModName}.pak`;
+                    const storedFileName = mod.fileName || mod.name.replace('.disabled', '');
+                    const currentFileName = enabled ? `${storedFileName}.pak.disabled` : `${storedFileName}.pak`;
                     const oldModPath = path.join(instanceModsPath, currentFileName);
 
-                    const targetFileName = enabled ? `${baseModName}.pak` : `${baseModName}.pak.disabled`;
+                    const targetFileName = enabled ? `${storedFileName}.pak` : `${storedFileName}.pak.disabled`;
                     const newModPath = path.join(instanceModsPath, targetFileName);
 
                     try {
@@ -919,7 +1160,7 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
                         return mod;
                     }
 
-                    return { ...mod, name: baseModName, enabled: enabled };
+                    return { ...mod, enabled: enabled };
                 }
                 return mod;
             });
@@ -931,12 +1172,9 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
     mainWindow.webContents.send('instance-updated');
 
     // Send updated installed mods to the workshop window
-    const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
-    if (workshopWindow) {
-        const currentInstance = updatedInstances.find(inst => inst.name === instanceName);
-        if (currentInstance) {
-            workshopWindow.webContents.send('set-installed-mods', currentInstance.mods);
-        }
+    const currentInstance = updatedInstances.find(inst => inst.name === instanceName);
+    if (currentInstance) {
+        getWorkshopWindows(instanceName).forEach(win => sendToWindow(win, 'set-installed-mods', currentInstance.mods));
     }
     return true;
 });
@@ -1177,7 +1415,7 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
     }
 
     const instance = instances[instanceIndex];
-    const modToDelete = instance.mods.find(mod => mod.id === modId);
+    const modToDelete = instance.mods.find(mod => String(mod.id) === String(modId));
 
     if (!modToDelete) {
         dialog.showErrorBox('Error', `Mod with ID '${modId}' not found in instance '${instanceName}'.`);
@@ -1185,9 +1423,10 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
     }
 
     const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
-    const modFileName = `${modToDelete.name}.pak`;
+    const storedFileName = modToDelete.fileName || modToDelete.name;
+    const modFileName = `${storedFileName}.pak`;
     const modFilePath = path.join(instanceModsPath, modFileName);
-    const disabledModFilePath = path.join(instanceModsPath, `${modToDelete.name}.pak.disabled`);
+    const disabledModFilePath = path.join(instanceModsPath, `${storedFileName}.pak.disabled`);
 
     try {
         if (fs.existsSync(modFilePath)) {
@@ -1198,7 +1437,7 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
             console.log(`Deleted disabled mod file: ${disabledModFilePath}`);
         }
 
-        const updatedMods = instance.mods.filter(mod => mod.id !== modId);
+        const updatedMods = instance.mods.filter(mod => String(mod.id) !== String(modId));
         const updatedInstance = { ...instance, mods: updatedMods };
         const updatedInstances = [...instances];
         updatedInstances[instanceIndex] = updatedInstance;
@@ -1206,10 +1445,7 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
         mainWindow.webContents.send('instance-updated');
 
         // Send updated installed mods to the workshop window
-        const workshopWindow = BrowserWindow.getAllWindows().find(win => win.getURL().includes('workshop.html'));
-        if (workshopWindow) {
-            workshopWindow.webContents.send('set-installed-mods', updatedMods);
-        }
+        getWorkshopWindows(instanceName).forEach(win => sendToWindow(win, 'set-installed-mods', updatedMods));
         
         return true;
     } catch (error) {

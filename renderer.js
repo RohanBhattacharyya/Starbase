@@ -12,10 +12,146 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const browseWorkshopButton = document.getElementById('browse-workshop-button');
     const importModsButton = document.getElementById('import-mods-button');
+    const downloadToast = document.getElementById('loadingOverlay');
+    const downloadProgressTitle = document.getElementById('downloadProgressTitle');
+    const downloadProgressMessage = document.getElementById('downloadProgressMessage');
+    const downloadProgressPercent = document.getElementById('downloadProgressPercent');
+    const downloadProgressTrack = document.getElementById('downloadProgressTrack');
+    const downloadProgressBar = document.getElementById('downloadProgressBar');
+    const downloadProgressDetails = document.getElementById('downloadProgressDetails');
+    const downloadQueueButton = document.getElementById('download-queue-button');
+    const downloadQueueBadge = document.getElementById('download-queue-badge');
+    const downloadQueueDialog = document.getElementById('download-queue-dialog');
+    const downloadQueueSummary = document.getElementById('download-queue-summary');
+    const downloadQueueList = document.getElementById('download-queue-list');
 
     let instances = [];
     let selectedInstanceName = null;
     let runningInstances = [];
+    let toastHideTimer = null;
+
+    function formatBytes(bytes) {
+        if (!Number.isFinite(bytes) || bytes <= 0) return '';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+        const value = bytes / (1024 ** unitIndex);
+        return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    }
+
+    function hideDownloadToast() {
+        downloadToast.classList.remove('visible', 'success', 'error');
+        downloadToast.setAttribute('aria-hidden', 'true');
+    }
+
+    function showDownloadProgress(progress) {
+        if (toastHideTimer) clearTimeout(toastHideTimer);
+        const percent = Number.isFinite(progress.percent) ? Math.max(0, Math.min(100, progress.percent)) : 0;
+        const terminal = progress.phase === 'complete' || progress.phase === 'error';
+
+        downloadToast.classList.toggle('success', progress.phase === 'complete');
+        downloadToast.classList.toggle('error', progress.phase === 'error');
+        downloadToast.classList.add('visible');
+        downloadToast.setAttribute('aria-hidden', 'false');
+        downloadProgressTitle.textContent = progress.phase === 'complete'
+            ? 'Instance ready'
+            : progress.phase === 'error'
+                ? 'Instance creation failed'
+                : `Creating ${progress.instanceName || 'instance'}`;
+        downloadProgressMessage.textContent = progress.message || 'Working…';
+        downloadProgressTrack.classList.toggle('indeterminate', Boolean(progress.indeterminate));
+
+        if (progress.indeterminate) {
+            downloadProgressPercent.textContent = progress.phase === 'extract' ? 'Extracting' : 'Working…';
+            downloadProgressTrack.removeAttribute('aria-valuenow');
+        } else {
+            downloadProgressPercent.textContent = `${Math.round(percent)}%`;
+            downloadProgressBar.style.width = `${percent}%`;
+            downloadProgressTrack.setAttribute('aria-valuenow', String(Math.round(percent)));
+        }
+
+        if (progress.phase === 'download' && progress.bytes) {
+            const downloaded = formatBytes(progress.bytes);
+            const total = formatBytes(progress.totalBytes);
+            downloadProgressDetails.textContent = total ? `${downloaded} of ${total}` : downloaded;
+        } else {
+            downloadProgressDetails.textContent = '';
+        }
+
+        if (terminal) {
+            toastHideTimer = setTimeout(hideDownloadToast, progress.phase === 'complete' ? 3000 : 7000);
+        }
+    }
+
+    window.electronAPI.onClientDownloadProgress(showDownloadProgress);
+
+    function renderDownloadQueue(state) {
+        const jobs = [...(state.jobs || [])];
+        const order = { downloading: 0, retrying: 1, queued: 2, failed: 3, completed: 4 };
+        jobs.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+        const pending = jobs.filter(job => ['queued', 'downloading', 'retrying'].includes(job.status)).length;
+        const completed = jobs.filter(job => job.status === 'completed').length;
+        const failed = jobs.filter(job => job.status === 'failed').length;
+
+        downloadQueueButton.hidden = jobs.length === 0;
+        downloadQueueBadge.textContent = String(pending);
+        downloadQueueSummary.textContent = jobs.length
+            ? `${pending} remaining · ${completed} complete${failed ? ` · ${failed} failed` : ''}`
+            : 'No mod downloads yet.';
+        downloadQueueList.replaceChildren();
+
+        if (!jobs.length) {
+            const empty = document.createElement('div');
+            empty.className = 'queue-empty';
+            empty.textContent = 'Your mod download queue is empty.';
+            downloadQueueList.appendChild(empty);
+            return;
+        }
+
+        jobs.forEach(job => {
+            const item = document.createElement('div');
+            item.className = 'queue-item';
+            const name = document.createElement('div');
+            name.className = 'queue-item-name';
+            name.textContent = job.modName;
+            const status = document.createElement('span');
+            status.className = `queue-status ${job.status}`;
+            status.textContent = job.status;
+            const meta = document.createElement('div');
+            meta.className = 'queue-item-meta';
+            meta.textContent = `${job.instanceName} · Workshop ${job.modId}${job.attempts > 1 ? ` · attempt ${job.attempts}` : ''}`;
+            item.append(name, status, meta);
+            if (job.error && ['failed', 'retrying'].includes(job.status)) {
+                const error = document.createElement('div');
+                error.className = 'queue-item-error';
+                error.textContent = `${job.status === 'retrying' ? 'Last error: ' : ''}${job.error}`;
+                item.appendChild(error);
+            }
+            downloadQueueList.appendChild(item);
+        });
+    }
+
+    function openDownloadQueue() {
+        downloadQueueDialog.classList.add('visible');
+        downloadQueueDialog.setAttribute('aria-hidden', 'false');
+        downloadQueueDialog.querySelector('.queue-close-button').focus();
+    }
+
+    function closeDownloadQueue() {
+        downloadQueueDialog.classList.remove('visible');
+        downloadQueueDialog.setAttribute('aria-hidden', 'true');
+        downloadQueueButton.focus();
+    }
+
+    downloadQueueButton.addEventListener('click', openDownloadQueue);
+    downloadQueueDialog.querySelector('.queue-close-button').addEventListener('click', closeDownloadQueue);
+    downloadQueueDialog.addEventListener('click', event => {
+        if (event.target === downloadQueueDialog) closeDownloadQueue();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && downloadQueueDialog.classList.contains('visible')) closeDownloadQueue();
+    });
+    window.electronAPI.onDownloadStatusUpdate(renderDownloadQueue);
+    window.electronAPI.getDownloadState().then(renderDownloadQueue);
 
     async function loadInstances() {
         instances = await window.electronAPI.getInstances();
@@ -273,8 +409,14 @@ window.addEventListener('DOMContentLoaded', () => {
                 const instanceIcon = instanceNameAndVersionResult.icon; // Get icon
 
                 if (instanceName && selectedVersion) {
-                    const loadingOverlay = document.getElementById('loadingOverlay');
-                    loadingOverlay.style.display = 'flex'; // Show overlay
+                    newInstanceButton.disabled = true;
+                    showDownloadProgress({
+                        instanceName,
+                        phase: 'release',
+                        message: 'Preparing the game download…',
+                        percent: 0,
+                        indeterminate: true
+                    });
 
                     try {
                         const success = await window.electronAPI.createInstance({ value: instanceName, description: instanceDescription, version: selectedVersion, icon: instanceIcon });
@@ -283,7 +425,7 @@ window.addEventListener('DOMContentLoaded', () => {
                             loadInstances();
                         }
                     } finally {
-                        loadingOverlay.style.display = 'none'; // Hide overlay
+                        newInstanceButton.disabled = false;
                     }
                 } else {
                     console.warn('Instance name or version not provided.');
@@ -291,6 +433,8 @@ window.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error('Failed to create new instance:', error);
+            showDownloadProgress({ phase: 'error', message: error.message, percent: 0, indeterminate: false });
+            newInstanceButton.disabled = false;
         }
     });
 

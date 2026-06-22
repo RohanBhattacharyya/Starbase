@@ -416,14 +416,104 @@ input:checked + .slider:before {
 }
 
 /* Workshop Browser Specific Styles */
+.workshop-body header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+}
+
+.workshop-body .search-bar {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) auto auto auto;
+    align-items: center;
+    width: 100%;
+}
+
+.workshop-body .search-bar input,
+.workshop-body .search-bar button {
+    height: 34px;
+    margin: 0;
+    box-sizing: border-box;
+    font-size: 13px;
+}
+
+.workshop-body .search-bar button {
+    min-width: 88px;
+    padding: 6px 10px;
+    white-space: nowrap;
+}
+
+.workshop-body #download-selected-button {
+    min-width: 138px;
+}
+
+.workshop-body #download-queue-button {
+    min-width: 104px;
+}
+
+.workshop-body .download-status {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+}
+
 .search-bar {
     display: flex;
     gap: var(--spacing-sm);
     flex-grow: 1;
 }
 
+.workshop-tabs {
+    display: flex;
+    gap: 4px;
+    height: 34px;
+    padding: 3px;
+    box-sizing: border-box;
+    background: var(--bg-primary);
+    border-radius: var(--border-radius);
+}
+
+.workshop-tab {
+    min-width: 88px;
+    height: 28px;
+    padding: 4px 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: transparent;
+}
+
+.workshop-tab.active {
+    color: white;
+    background: var(--accent-blue);
+}
+
+.download-status {
+    min-width: 190px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-align: right;
+}
+
 .search-bar input {
     margin-bottom: 0; /* Override general input margin */
+}
+
+@media (max-width: 760px) {
+    .workshop-body .search-bar {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .workshop-body .search-bar input {
+        grid-column: 1 / -1;
+    }
+
+    .workshop-body .search-bar button,
+    .workshop-body #download-selected-button,
+    .workshop-body #download-queue-button {
+        min-width: 0;
+    }
 }
 
 .mod-list {
@@ -432,6 +522,54 @@ input:checked + .slider:before {
     justify-content: center; /* or flex-start, depending on desired alignment */
     gap: var(--spacing-lg);
     /* Removed width: 100%; */
+}
+
+#content-container:has(.collection-detail:not([hidden])) {
+    flex-direction: column;
+}
+
+.collection-detail {
+    width: 100%;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.collection-detail[hidden] {
+    display: none;
+}
+
+.collection-detail h2,
+.collection-detail p {
+    margin: 0;
+}
+
+.collection-detail p {
+    margin-top: 4px;
+    color: var(--text-secondary);
+}
+
+.collection-badge {
+    display: inline-block;
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-top: auto;
+}
+
+.mod-card-actions {
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+.mod-card-actions .mod-checkbox {
+    width: 18px;
+    height: 18px;
 }
 
 .mod-card {
@@ -693,28 +831,236 @@ input:checked + .slider:before {
     background-color: var(--bg-tertiary);
 }
 
-.spinner {
-    border: 4px solid rgba(0, 0, 0, 0.1);
-    border-left-color: #ffffff;
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    animation: spin 1s linear infinite;
-    box-sizing: border-box; /* Ensure padding and border are included in the element's total width and height */
+.download-toast {
+    position: fixed;
+    right: var(--spacing-lg);
+    bottom: var(--spacing-lg);
+    z-index: 1000;
+    display: none;
+    width: min(390px, calc(100vw - 40px));
+    padding: var(--spacing-md);
+    box-sizing: border-box;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
 }
 
-.loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.7); /* Dark overlay with transparency */
+.download-toast.visible {
+    display: block;
+    animation: toast-in 180ms ease-out;
+}
+
+.download-toast.success {
+    border-color: var(--accent-green);
+}
+
+.download-toast.error {
+    border-color: var(--accent-red);
+}
+
+.download-toast-heading {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000; /* Ensure it's on top of other content */
-    display: none; /* Hidden by default */
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+}
+
+.download-toast-heading p {
+    margin: 4px 0 var(--spacing-sm);
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+#downloadProgressPercent {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.progress-track {
+    width: 100%;
+    height: 8px;
+    overflow: hidden;
+    background: var(--bg-primary);
+    border-radius: 999px;
+}
+
+.progress-bar {
+    width: 0;
+    height: 100%;
+    background: var(--accent-blue);
+    border-radius: inherit;
+    transition: width 160ms ease-out;
+}
+
+.progress-track.indeterminate .progress-bar {
+    width: 35%;
+    animation: progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+.download-toast.success .progress-bar {
+    background: var(--accent-green);
+}
+
+.download-toast.error .progress-bar {
+    background: var(--accent-red);
+}
+
+.download-progress-details {
+    min-height: 16px;
+    margin-top: 7px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.queue-button {
+    white-space: nowrap;
+}
+
+.queue-badge {
+    min-width: 18px;
+    padding: 2px 6px;
+    box-sizing: border-box;
+    color: white;
+    background: var(--accent-blue);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.queue-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: none;
+    place-items: center;
+    padding: var(--spacing-lg);
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.queue-overlay.visible {
+    display: grid;
+}
+
+.queue-dialog {
+    width: min(560px, calc(100vw - 40px));
+    max-height: min(680px, calc(100vh - 40px));
+    padding: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.queue-dialog-header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.queue-dialog-header h2,
+.queue-dialog-header p {
+    margin: 0;
+}
+
+.queue-dialog-header h2 {
+    font-size: 18px;
+}
+
+.queue-dialog-header p {
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.queue-close-button {
+    align-self: flex-start;
+    padding: 8px 10px;
+}
+
+.queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-height: 520px;
+    overflow-y: auto;
+    background: var(--border-color);
+}
+
+.queue-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px var(--spacing-md);
+    padding: 12px var(--spacing-lg);
+    background: var(--bg-secondary);
+}
+
+.queue-item-name {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.queue-item-meta,
+.queue-item-error {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.queue-item-error {
+    grid-column: 1 / -1;
+    color: #ef9a9a;
+}
+
+.queue-status {
+    align-self: start;
+    padding: 3px 8px;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border-radius: 999px;
+    font-size: 11px;
+    text-transform: capitalize;
+}
+
+.queue-status.downloading,
+.queue-status.retrying {
+    color: white;
+    background: var(--accent-blue);
+}
+
+.queue-status.completed {
+    color: white;
+    background: var(--accent-green);
+}
+
+.queue-status.failed {
+    color: white;
+    background: var(--accent-red);
+}
+
+.queue-empty {
+    padding: 36px var(--spacing-lg);
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    text-align: center;
+}
+
+@keyframes progress-indeterminate {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(300%); }
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes spin {
