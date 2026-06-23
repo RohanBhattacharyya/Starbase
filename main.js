@@ -871,6 +871,29 @@ ipcMain.handle('select-pak', async () => {
 
 ipcMain.handle('get-instances', async () => store.get('instances', []));
 
+function configureNewInstance(instancePath) {
+    const platformDirectory = {
+        win32: 'win',
+        darwin: 'osx',
+        linux: 'linux'
+    }[process.platform];
+    const configPath = path.join(instancePath, platformDirectory, 'sbinit.config');
+
+    if (!fs.existsSync(configPath)) {
+        throw new Error(`The downloaded client is missing ${platformDirectory}/sbinit.config.`);
+    }
+
+    let config;
+    try {
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (error) {
+        throw new Error(`The downloaded client's sbinit.config is invalid: ${error.message}`);
+    }
+
+    config.includeUGC = false;
+    fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+}
+
 ipcMain.handle('create-instance', async (event, { value: instanceName, description: instanceDescription, version, icon }) => {
     const sourceWindow = BrowserWindow.fromWebContents(event.sender);
     const reportProgress = progress => sendToWindow(sourceWindow, 'client-download-progress', {
@@ -900,6 +923,7 @@ ipcMain.handle('create-instance', async (event, { value: instanceName, descripti
         fse.mkdirpSync(instanceAssetsPath);
         fse.mkdirpSync(instanceModsPath);
         fse.mkdirpSync(instanceStoragePath);
+        configureNewInstance(instancePath);
 
         const pakPath = store.get('packedPakPath');
         if (pakPath) {
