@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const electronAPI = {
   getInstances: () => ipcRenderer.invoke('get-instances'),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (settings) => ipcRenderer.invoke('update-settings', settings),
+  selectDirectory: (defaultPath) => ipcRenderer.invoke('select-directory', defaultPath),
+  selectPackedPakPath: (defaultPath) => ipcRenderer.invoke('select-packed-pak-path', defaultPath),
   createInstance: (args) => ipcRenderer.invoke('create-instance', args),
   updateInstance: (oldName, newName, newDescription, newIcon) => ipcRenderer.invoke('update-instance', oldName, newName, newDescription, newIcon),
   deleteInstance: (instanceName) => ipcRenderer.invoke('delete-instance', instanceName),

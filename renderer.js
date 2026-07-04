@@ -24,11 +24,25 @@ window.addEventListener('DOMContentLoaded', () => {
     const downloadQueueDialog = document.getElementById('download-queue-dialog');
     const downloadQueueSummary = document.getElementById('download-queue-summary');
     const downloadQueueList = document.getElementById('download-queue-list');
+    const settingsButton = document.getElementById('settings-button');
+    const settingsDialog = document.getElementById('settings-dialog');
+    const settingsCloseButton = document.getElementById('settings-close-button');
+    const settingsCancelButton = document.getElementById('settings-cancel-button');
+    const settingsForm = document.getElementById('settings-form');
+    const settingsStatus = document.getElementById('settings-status');
+    const installationDirectoryInput = document.getElementById('installation-directory-input');
+    const steamcmdDirectoryInput = document.getElementById('steamcmd-directory-input');
+    const packedPakPathInput = document.getElementById('packed-pak-path-input');
+    const steamApiKeyInput = document.getElementById('steam-api-key-input');
+    const browseInstallationDirectoryButton = document.getElementById('browse-installation-directory-button');
+    const browseSteamcmdDirectoryButton = document.getElementById('browse-steamcmd-directory-button');
+    const browsePackedPakButton = document.getElementById('browse-packed-pak-button');
 
     let instances = [];
     let selectedInstanceName = null;
     let runningInstances = [];
     let toastHideTimer = null;
+    let settingsReturnFocus = null;
 
     function escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, character => ({
@@ -148,13 +162,118 @@ window.addEventListener('DOMContentLoaded', () => {
         downloadQueueButton.focus();
     }
 
+    function cleanIpcErrorMessage(error) {
+        return String(error?.message || error || 'Settings could not be saved.')
+            .replace(/^Error invoking remote method '[^']+':\s*/, '');
+    }
+
+    function setSettingsStatus(message = '', tone = '') {
+        settingsStatus.textContent = message;
+        settingsStatus.hidden = !message;
+        settingsStatus.classList.toggle('success', tone === 'success');
+        settingsStatus.classList.toggle('error', tone === 'error');
+    }
+
+    function populateSettingsForm(settings) {
+        installationDirectoryInput.value = settings.installationDirectory || '';
+        steamcmdDirectoryInput.value = settings.steamcmdDirectory || '';
+        packedPakPathInput.value = settings.packedPakPath || '';
+        steamApiKeyInput.value = settings.steamApiKey || '';
+    }
+
+    async function loadSettingsForm() {
+        const settings = await window.electronAPI.getSettings();
+        populateSettingsForm(settings);
+        setSettingsStatus();
+    }
+
+    async function openSettingsDialog() {
+        settingsReturnFocus = document.activeElement;
+        settingsDialog.classList.add('visible');
+        settingsDialog.setAttribute('aria-hidden', 'false');
+        setSettingsStatus('Loading settings…');
+
+        try {
+            await loadSettingsForm();
+            installationDirectoryInput.focus();
+            installationDirectoryInput.select();
+        } catch (error) {
+            setSettingsStatus(cleanIpcErrorMessage(error), 'error');
+        }
+    }
+
+    function closeSettingsDialog() {
+        settingsDialog.classList.remove('visible');
+        settingsDialog.setAttribute('aria-hidden', 'true');
+        setSettingsStatus();
+        if (settingsReturnFocus && typeof settingsReturnFocus.focus === 'function') {
+            settingsReturnFocus.focus();
+        } else {
+            settingsButton.focus();
+        }
+    }
+
+    async function chooseDirectoryFor(input) {
+        const selectedPath = await window.electronAPI.selectDirectory(input.value);
+        if (selectedPath) {
+            input.value = selectedPath;
+            input.focus();
+        }
+    }
+
+    function getSettingsPayload() {
+        return {
+            installationDirectory: installationDirectoryInput.value.trim(),
+            steamcmdDirectory: steamcmdDirectoryInput.value.trim(),
+            packedPakPath: packedPakPathInput.value.trim(),
+            steamApiKey: steamApiKeyInput.value.trim()
+        };
+    }
+
     downloadQueueButton.addEventListener('click', openDownloadQueue);
     downloadQueueDialog.querySelector('.queue-close-button').addEventListener('click', closeDownloadQueue);
     downloadQueueDialog.addEventListener('click', event => {
         if (event.target === downloadQueueDialog) closeDownloadQueue();
     });
     document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && downloadQueueDialog.classList.contains('visible')) closeDownloadQueue();
+        if (event.key !== 'Escape') return;
+        if (settingsDialog.classList.contains('visible')) {
+            closeSettingsDialog();
+        } else if (downloadQueueDialog.classList.contains('visible')) {
+            closeDownloadQueue();
+        }
+    });
+    settingsButton.addEventListener('click', openSettingsDialog);
+    settingsCloseButton.addEventListener('click', closeSettingsDialog);
+    settingsCancelButton.addEventListener('click', closeSettingsDialog);
+    settingsDialog.addEventListener('click', event => {
+        if (event.target === settingsDialog) closeSettingsDialog();
+    });
+    browseInstallationDirectoryButton.addEventListener('click', () => chooseDirectoryFor(installationDirectoryInput));
+    browseSteamcmdDirectoryButton.addEventListener('click', () => chooseDirectoryFor(steamcmdDirectoryInput));
+    browsePackedPakButton.addEventListener('click', async () => {
+        const selectedPath = await window.electronAPI.selectPackedPakPath(packedPakPathInput.value);
+        if (selectedPath) {
+            packedPakPathInput.value = selectedPath;
+            packedPakPathInput.focus();
+        }
+    });
+    settingsForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const saveButton = document.getElementById('settings-save-button');
+        saveButton.disabled = true;
+        setSettingsStatus('Saving settings…');
+
+        try {
+            const updatedSettings = await window.electronAPI.updateSettings(getSettingsPayload());
+            populateSettingsForm(updatedSettings);
+            setSettingsStatus('Settings saved.', 'success');
+            setTimeout(closeSettingsDialog, 450);
+        } catch (error) {
+            setSettingsStatus(cleanIpcErrorMessage(error), 'error');
+        } finally {
+            saveButton.disabled = false;
+        }
     });
     window.electronAPI.onDownloadStatusUpdate(renderDownloadQueue);
     window.electronAPI.getDownloadState().then(renderDownloadQueue);

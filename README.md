@@ -52,6 +52,20 @@ STARBASE_STEAM_API_KEY="YOUR_STEAM_WEB_API_KEY" npm run dist
 
 Replace `"YOUR_STEAM_WEB_API_KEY"` with your actual Steam Web API Key. You can obtain a key from [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey).
 
+> [!NOTE]
+> An embedded key is not printed in build logs, but a key shipped inside a desktop application should not be treated as unrecoverable from the artifact.
+
+#### GitHub Actions Builds
+
+The GitHub workflow builds Linux, Windows, and macOS artifacts when run manually or when a `v*` tag is pushed. To include the Steam Web API Key without exposing it in workflow logs, add a repository secret named `STARBASE_STEAM_API_KEY`:
+
+1. Open the repository on GitHub.
+2. Go to **Settings** > **Secrets and variables** > **Actions**.
+3. Add a new repository secret named `STARBASE_STEAM_API_KEY`.
+4. Run the **Build Starbase** workflow or push a version tag such as `v1.3.0`.
+
+Do not pass the key as a `workflow_dispatch` input; workflow inputs are not secret values.
+
 #### Building Without an Embedded Steam Web API Key
 
 If you do not wish to embed a key, simply run the build command without setting the `STARBASE_STEAM_API_KEY` environment variable. Users will be prompted to enter their own Steam Web API Key the first time they attempt to browse the Steam Workshop.

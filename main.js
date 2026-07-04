@@ -154,7 +154,7 @@ function createModFileBaseName(modName, modId) {
 // Refactored mod download logic
 async function performModDownload(modId, modName, instanceName, { skipDownload = false } = {}) {
 
-    const instancePath = path.join(instancesDir, instanceName);
+    const instancePath = getInstancePathByName(instanceName);
     const instanceModsPath = path.join(instancePath, 'mods');
     
     const workshopDir = getSteamWorkshopDirectory();
@@ -394,14 +394,96 @@ try {
     console.error('Could not load the embedded API key:', error);
 }
 
-const instancesDir = path.join(app.getPath('userData'), 'instances');
-const steamcmdDir = path.join(app.getPath('userData'), 'steamcmd');
-const steamcmdExecutable = path.join(steamcmdDir, process.platform === 'win32' ? 'steamcmd.exe' : 'steamcmd.sh');
+const DEFAULT_SETTINGS = {
+    installationDirectory: path.join(app.getPath('userData'), 'instances'),
+    steamcmdDirectory: path.join(app.getPath('userData'), 'steamcmd')
+};
+
+let instancesDir;
+let steamcmdDir;
+let steamcmdExecutable;
+
 const modDirectoryWatchers = new Map();
 const modReconcileTimers = new Map();
 
-if (!fs.existsSync(instancesDir)) fse.mkdirpSync(instancesDir);
-if (!fs.existsSync(steamcmdDir)) fse.mkdirpSync(steamcmdDir);
+function resolveSettingPath(value, fallback) {
+    if (!value || typeof value !== 'string') return fallback;
+    return path.resolve(value);
+}
+
+function getAppSettings() {
+    const storedSettings = store.get('settings', {});
+    return {
+        installationDirectory: resolveSettingPath(storedSettings.installationDirectory, DEFAULT_SETTINGS.installationDirectory),
+        steamcmdDirectory: resolveSettingPath(storedSettings.steamcmdDirectory, DEFAULT_SETTINGS.steamcmdDirectory),
+        packedPakPath: store.get('packedPakPath', ''),
+        steamApiKey: store.get('steamApiKey', '')
+    };
+}
+
+function applyManagedDirectories() {
+    const settings = getAppSettings();
+    instancesDir = settings.installationDirectory;
+    steamcmdDir = settings.steamcmdDirectory;
+    steamcmdExecutable = path.join(steamcmdDir, process.platform === 'win32' ? 'steamcmd.exe' : 'steamcmd.sh');
+    fse.mkdirpSync(instancesDir);
+    fse.mkdirpSync(steamcmdDir);
+}
+
+function getInstancePath(instance) {
+    if (!instance) return null;
+    return instance.clientPath || path.join(instancesDir, instance.name);
+}
+
+function getInstancePathByName(instanceName) {
+    const instance = store.get('instances', []).find(item => item.name === instanceName);
+    return getInstancePath(instance) || path.join(instancesDir, instanceName);
+}
+
+function ensureInstanceClientPaths() {
+    const instances = store.get('instances', []);
+    let changed = false;
+    const updatedInstances = instances.map(instance => {
+        if (instance.clientPath) return instance;
+        changed = true;
+        return { ...instance, clientPath: path.join(instancesDir, instance.name) };
+    });
+    if (changed) store.set('instances', updatedInstances);
+}
+
+function refreshInstanceWatchers() {
+    modDirectoryWatchers.forEach(watcher => watcher.close());
+    modDirectoryWatchers.clear();
+    modReconcileTimers.forEach(timer => clearTimeout(timer));
+    modReconcileTimers.clear();
+    watchAllInstanceMods();
+}
+
+function refreshPackedPakLinks(packedPakPath) {
+    if (!packedPakPath) return;
+    store.get('instances', []).forEach(instance => {
+        const instancePath = getInstancePath(instance);
+        if (!instancePath) return;
+
+        const assetsPath = path.join(instancePath, 'assets');
+        const linkPath = path.join(assetsPath, 'packed.pak');
+        try {
+            fse.mkdirpSync(assetsPath);
+            try {
+                fs.lstatSync(linkPath);
+                fse.removeSync(linkPath);
+            } catch (error) {
+                if (error.code !== 'ENOENT') throw error;
+            }
+            fs.symlinkSync(packedPakPath, linkPath);
+        } catch (error) {
+            console.error(`Failed to update packed.pak link for ${instance.name}:`, error);
+        }
+    });
+}
+
+applyManagedDirectories();
+ensureInstanceClientPaths();
 
 function getManagedModEntryName(mod) {
     if (mod.external) return mod.entryName;
@@ -433,7 +515,7 @@ function reconcileInstanceMods(instanceName) {
     if (instanceIndex === -1) return;
     const instance = instances[instanceIndex];
 
-    const modsPath = path.join(instancesDir, instanceName, 'mods');
+    const modsPath = path.join(getInstancePath(instance), 'mods');
     fse.mkdirpSync(modsPath);
     let entries;
     try {
@@ -490,7 +572,11 @@ function watchInstanceMods(instanceName) {
     const existingWatcher = modDirectoryWatchers.get(instanceName);
     if (existingWatcher) existingWatcher.close();
 
-    const modsPath = path.join(instancesDir, instanceName, 'mods');
+    const instance = store.get('instances', []).find(item => item.name === instanceName);
+    const instancePath = getInstancePath(instance);
+    if (!instancePath) return;
+
+    const modsPath = path.join(instancePath, 'mods');
     fse.mkdirpSync(modsPath);
     reconcileInstanceMods(instanceName);
     try {
@@ -870,6 +956,78 @@ ipcMain.handle('select-pak', async () => {
 });
 
 ipcMain.handle('get-instances', async () => store.get('instances', []));
+
+ipcMain.handle('get-settings', async () => getAppSettings());
+
+ipcMain.handle('update-settings', async (event, nextSettings = {}) => {
+    const currentSettings = getAppSettings();
+    const installationDirectory = resolveSettingPath(nextSettings.installationDirectory, currentSettings.installationDirectory);
+    const steamcmdDirectory = resolveSettingPath(nextSettings.steamcmdDirectory, currentSettings.steamcmdDirectory);
+    const packedPakPath = resolveSettingPath(nextSettings.packedPakPath, currentSettings.packedPakPath);
+    const steamApiKey = typeof nextSettings.steamApiKey === 'string'
+        ? nextSettings.steamApiKey.trim()
+        : currentSettings.steamApiKey;
+
+    if (steamcmdDirectory !== currentSettings.steamcmdDirectory && getDownloadState().pending > 0) {
+        throw new Error('Wait for the current workshop downloads to finish before changing the SteamCMD directory.');
+    }
+
+    if (!packedPakPath || !fs.existsSync(packedPakPath) || path.extname(packedPakPath).toLowerCase() !== '.pak') {
+        throw new Error('Choose a valid Starbound packed.pak file.');
+    }
+
+    fse.mkdirpSync(installationDirectory);
+    fse.mkdirpSync(steamcmdDirectory);
+    ensureInstanceClientPaths();
+
+    store.set('settings', {
+        installationDirectory,
+        steamcmdDirectory
+    });
+    store.set('packedPakPath', packedPakPath);
+    if (steamApiKey) {
+        store.set('steamApiKey', steamApiKey);
+    } else {
+        store.delete('steamApiKey');
+    }
+
+    const directoriesChanged = installationDirectory !== currentSettings.installationDirectory ||
+        steamcmdDirectory !== currentSettings.steamcmdDirectory;
+    const packedPakChanged = packedPakPath !== currentSettings.packedPakPath;
+
+    applyManagedDirectories();
+    if (directoriesChanged) refreshInstanceWatchers();
+    if (packedPakChanged) refreshPackedPakLinks(packedPakPath);
+
+    return getAppSettings();
+});
+
+ipcMain.handle('select-directory', async (event, defaultPath) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+        properties: ['openDirectory', 'createDirectory'],
+        defaultPath: defaultPath || undefined
+    };
+    const result = parentWindow
+        ? await dialog.showOpenDialog(parentWindow, options)
+        : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+});
+
+ipcMain.handle('select-packed-pak-path', async (event, defaultPath) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+        properties: ['openFile'],
+        defaultPath: defaultPath || undefined,
+        filters: [{ name: 'Starbound Assets', extensions: ['pak'] }]
+    };
+    const result = parentWindow
+        ? await dialog.showOpenDialog(parentWindow, options)
+        : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+});
 
 function configureNewInstance(instancePath) {
     const platformDirectory = {
@@ -1310,9 +1468,9 @@ ipcMain.handle('update-mod-status', (event, instanceName, modId, enabled) => {
     const instances = store.get('instances', []);
     const updatedInstances = instances.map(inst => {
         if (inst.name === instanceName) {
-            const updatedMods = inst.mods.map(mod => {
+            const updatedMods = (inst.mods || []).map(mod => {
                 if (String(mod.id) === String(modId)) {
-                    const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
+                    const instanceModsPath = path.join(getInstancePath(inst), 'mods');
                     const storedFileName = mod.fileName || mod.name.replace('.disabled', '');
                     const currentFileName = mod.external
                         ? mod.entryName
@@ -1374,8 +1532,8 @@ ipcMain.handle('update-instance', async (event, oldName, newName, newDescription
         return false;
     }
 
-    const oldInstancePath = path.join(instancesDir, oldName);
-    const newInstancePath = path.join(instancesDir, newName);
+    const oldInstancePath = getInstancePath(instances[instanceIndex]);
+    const newInstancePath = path.join(path.dirname(oldInstancePath), newName);
 
     try {
         if (oldName !== newName) {
@@ -1412,9 +1570,11 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
 
     let starboundExecutable;
     if (process.platform === 'win32') {
-        starboundExecutable = path.join(instance.clientPath, 'win', 'starbound.exe');
+        const instancePath = getInstancePath(instance);
+        starboundExecutable = path.join(instancePath, 'win', 'starbound.exe');
     } else if (process.platform === 'darwin') {
-        starboundExecutable = path.join(instance.clientPath, 'osx', 'Starbound.app');
+        const instancePath = getInstancePath(instance);
+        starboundExecutable = path.join(instancePath, 'osx', 'Starbound.app');
         // Check if the user has disabled Gatekeeper for unsigned apps
         const gatekeeperCheck = await new Promise(resolve => {
             const child = spawn('spctl', ['--status']);
@@ -1435,7 +1595,8 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
             return false;
         }
     } else { // linux
-        starboundExecutable = path.join(instance.clientPath, 'linux', 'starbound');
+        const instancePath = getInstancePath(instance);
+        starboundExecutable = path.join(instancePath, 'linux', 'starbound');
     }
     if (!fs.existsSync(starboundExecutable)) {
         dialog.showErrorBox('Error', 'OpenStarbound executable not found. Please ensure the client is downloaded for this instance.');
@@ -1452,19 +1613,19 @@ ipcMain.handle('launch-game', async (event, instanceName) => {
         let gameProcess;
         if (process.platform === 'darwin') {
             gameProcess = spawn('open', ['Starbound.app'], {
-                cwd: path.join(instance.clientPath, 'osx'),
+                cwd: path.join(getInstancePath(instance), 'osx'),
                 detached: true,
                 stdio: 'pipe'
             });
         } else {
             gameProcess = spawn(starboundExecutable, [], {
-                cwd: instance.clientPath,
+                cwd: getInstancePath(instance),
                 detached: true,
                 stdio: 'pipe'
             });
         }
 
-        const logPath = path.join(instance.clientPath, 'logs', 'starbound.log');
+        const logPath = path.join(getInstancePath(instance), 'logs', 'starbound.log');
         const logDir = path.dirname(logPath);
         if (!fs.existsSync(logDir)) {
             fse.mkdirpSync(logDir);
@@ -1511,7 +1672,7 @@ ipcMain.handle('get-log', async (event, instanceName) => {
         return 'Instance not found.';
     }
 
-    const logPath = path.join(instance.clientPath, 'logs', 'starbound.log');
+    const logPath = path.join(getInstancePath(instance), 'logs', 'starbound.log');
     if (fs.existsSync(logPath)) {
         return fs.readFileSync(logPath, 'utf-8');
     } else {
@@ -1521,7 +1682,13 @@ ipcMain.handle('get-log', async (event, instanceName) => {
 
 ipcMain.handle('delete-instance', async (event, instanceName) => {
     const instances = store.get('instances', []);
-    const instancePath = path.join(instancesDir, instanceName);
+    const instance = instances.find(inst => inst.name === instanceName);
+    if (!instance) {
+        dialog.showErrorBox('Error', `Instance '${instanceName}' not found.`);
+        return false;
+    }
+
+    const instancePath = getInstancePath(instance);
     const logPath = path.join(instancePath, 'logs', 'starbound.log');
 
     try {
@@ -1557,7 +1724,8 @@ ipcMain.handle('import-mods', async (event, instanceName, folderPath) => {
         return false;
     }
 
-    const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
+    const instanceModsPath = path.join(getInstancePath(instance), 'mods');
+    fse.mkdirpSync(instanceModsPath);
     const files = fs.readdirSync(folderPath);
 
     for (const file of files) {
@@ -1578,7 +1746,8 @@ ipcMain.handle('import-mods', async (event, instanceName, folderPath) => {
             }
 
             const modName = path.basename(file, '.pak');
-            if (!instance.mods.some(m => m.id === modId)) {
+            if (!(instance.mods || []).some(m => m.id === modId)) {
+                if (!instance.mods) instance.mods = [];
                 instance.mods.push({ id: modId, name: modName, enabled: true, imported: true });
             }
         }
@@ -1599,14 +1768,14 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
     }
 
     const instance = instances[instanceIndex];
-    const modToDelete = instance.mods.find(mod => String(mod.id) === String(modId));
+    const modToDelete = (instance.mods || []).find(mod => String(mod.id) === String(modId));
 
     if (!modToDelete) {
         dialog.showErrorBox('Error', `Mod with ID '${modId}' not found in instance '${instanceName}'.`);
         return false;
     }
 
-    const instanceModsPath = path.join(instancesDir, instanceName, 'mods');
+    const instanceModsPath = path.join(getInstancePath(instance), 'mods');
     const storedFileName = modToDelete.fileName || modToDelete.name;
     const modFileName = `${storedFileName}.pak`;
     const modFilePath = path.join(instanceModsPath, modFileName);
@@ -1627,7 +1796,7 @@ ipcMain.handle('delete-mod', async (event, instanceName, modId) => {
             console.log(`Deleted disabled mod file: ${disabledModFilePath}`);
         }
 
-        const updatedMods = instance.mods.filter(mod => String(mod.id) !== String(modId));
+        const updatedMods = (instance.mods || []).filter(mod => String(mod.id) !== String(modId));
         const updatedInstance = { ...instance, mods: updatedMods };
         const updatedInstances = [...instances];
         updatedInstances[instanceIndex] = updatedInstance;
@@ -1654,7 +1823,7 @@ ipcMain.handle('open-instance-folder', async (event, instanceName) => {
         return false;
     }
 
-    const instancePath = path.join(instancesDir, instanceName);
+    const instancePath = getInstancePath(instance);
 
     try {
         await shell.openPath(instancePath);

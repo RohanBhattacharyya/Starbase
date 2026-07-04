@@ -52,10 +52,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify Steam Web API key secret
+        run: |
+          node -e "if (!process.env.STARBASE_STEAM_API_KEY) { console.error('::error title=Missing Steam Web API key::Add a repository secret named STARBASE_STEAM_API_KEY before running this workflow. Do not pass the key as a workflow input.'); process.exit(1); } console.log('Steam Web API key secret is configured.');"
+        env:
+          STARBASE_STEAM_API_KEY: ${{ secrets.STARBASE_STEAM_API_KEY }}
+
       - name: Build package
         run: npm run ${{ matrix.command }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          STARBASE_STEAM_API_KEY: ${{ secrets.STARBASE_STEAM_API_KEY }}
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -63,3 +70,4 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
           if-no-files-found: error
+          retention-days: 14

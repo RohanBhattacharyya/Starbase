@@ -12,6 +12,7 @@
         <h1>Starbase Launcher</h1>
         <div class="header-actions">
             <button id="download-queue-button" class="secondary queue-button" hidden><i class="fas fa-list"></i> Downloads <span id="download-queue-badge" class="queue-badge">0</span></button>
+            <button id="settings-button" class="secondary"><i class="fas fa-cog"></i> Settings</button>
             <button id="new-instance-button" class="primary"><i class="fas fa-plus"></i> New Instance</button>
             <button id="browse-workshop-button" class="secondary"><i class="fas fa-store"></i> Browse Workshop</button>
             <button id="import-mods-button" class="secondary"><i class="fas fa-plus"></i> Import</button>
@@ -54,6 +55,62 @@
                 <button class="queue-close-button secondary" aria-label="Close download queue"><i class="fas fa-times"></i></button>
             </div>
             <div id="download-queue-list" class="queue-list"></div>
+        </section>
+    </div>
+    <div id="settings-dialog" class="settings-overlay" aria-hidden="true">
+        <section class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="settings-dialog-header">
+                <div>
+                    <h2 id="settings-title">Settings</h2>
+                    <p id="settings-summary">Application paths and workshop access</p>
+                </div>
+                <button id="settings-close-button" class="secondary" aria-label="Close settings"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="settings-form" class="settings-form">
+                <div id="settings-status" class="settings-status" hidden></div>
+
+                <section class="settings-section" aria-labelledby="settings-storage-title">
+                    <h3 id="settings-storage-title">Storage</h3>
+                    <label class="settings-field" for="installation-directory-input">
+                        <span>Installation directory</span>
+                        <div class="path-control">
+                            <input id="installation-directory-input" type="text" spellcheck="false">
+                            <button id="browse-installation-directory-button" type="button" class="secondary" title="Choose installation directory" aria-label="Choose installation directory"><i class="fas fa-folder-open"></i></button>
+                        </div>
+                    </label>
+                    <label class="settings-field" for="steamcmd-directory-input">
+                        <span>SteamCMD directory</span>
+                        <div class="path-control">
+                            <input id="steamcmd-directory-input" type="text" spellcheck="false">
+                            <button id="browse-steamcmd-directory-button" type="button" class="secondary" title="Choose SteamCMD directory" aria-label="Choose SteamCMD directory"><i class="fas fa-folder-open"></i></button>
+                        </div>
+                    </label>
+                </section>
+
+                <section class="settings-section" aria-labelledby="settings-starbound-title">
+                    <h3 id="settings-starbound-title">Starbound</h3>
+                    <label class="settings-field" for="packed-pak-path-input">
+                        <span>packed.pak</span>
+                        <div class="path-control">
+                            <input id="packed-pak-path-input" type="text" spellcheck="false">
+                            <button id="browse-packed-pak-button" type="button" class="secondary" title="Choose packed.pak" aria-label="Choose packed.pak"><i class="fas fa-file"></i></button>
+                        </div>
+                    </label>
+                </section>
+
+                <section class="settings-section" aria-labelledby="settings-workshop-title">
+                    <h3 id="settings-workshop-title">Workshop</h3>
+                    <label class="settings-field" for="steam-api-key-input">
+                        <span>Steam Web API key</span>
+                        <input id="steam-api-key-input" type="password" autocomplete="off" spellcheck="false">
+                    </label>
+                </section>
+
+                <div class="settings-actions">
+                    <button id="settings-cancel-button" type="button" class="secondary">Cancel</button>
+                    <button id="settings-save-button" type="submit" class="primary"><i class="fas fa-save"></i> Save</button>
+                </div>
+            </form>
         </section>
     </div>
     <script src="./renderer.js"></script>

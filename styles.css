@@ -84,6 +84,7 @@ button.disabled-btn {
 
 /* Input Field Styles */
 input[type="text"],
+input[type="password"],
 select {
     width: 100%;
     padding: var(--spacing-sm);
@@ -97,6 +98,7 @@ select {
 }
 
 input[type="text"]:focus,
+input[type="password"]:focus,
 select:focus {
     outline: none;
     border-color: var(--accent-blue);
@@ -142,8 +144,10 @@ header {
 
 .header-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--spacing-sm);
     align-items: center;
+    justify-content: flex-end;
 }
 
 header h1 {
@@ -1132,6 +1136,167 @@ input:checked + .slider:before {
     color: var(--text-secondary);
     background: var(--bg-secondary);
     text-align: center;
+}
+
+.settings-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    display: none;
+    place-items: center;
+    padding: var(--spacing-lg);
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.62);
+}
+
+.settings-overlay.visible {
+    display: grid;
+}
+
+.settings-dialog {
+    width: min(680px, calc(100vw - 40px));
+    max-height: min(740px, calc(100vh - 40px));
+    overflow: hidden;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+}
+
+.settings-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settings-dialog-header h2,
+.settings-dialog-header p {
+    margin: 0;
+}
+
+.settings-dialog-header h2 {
+    font-size: 18px;
+}
+
+.settings-dialog-header p {
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+#settings-close-button {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    max-height: calc(min(740px, 100vh - 40px) - 72px);
+    padding: var(--spacing-lg);
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+
+.settings-section {
+    display: grid;
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: var(--spacing-md);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.settings-section h3 {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.settings-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+}
+
+.settings-field + .settings-field {
+    grid-column: 2;
+}
+
+.settings-field span {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.path-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    gap: var(--spacing-sm);
+}
+
+.path-control input {
+    min-width: 0;
+}
+
+.path-control button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+}
+
+.settings-status {
+    padding: 10px 12px;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    font-size: 13px;
+}
+
+.settings-status.success {
+    color: #c8f7c5;
+    border-color: rgba(76, 175, 80, 0.55);
+}
+
+.settings-status.error {
+    color: #ffcdd2;
+    border-color: rgba(229, 57, 53, 0.6);
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-sm);
+}
+
+@media (max-width: 720px) {
+    header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .settings-section {
+        grid-template-columns: 1fr;
+    }
+
+    .settings-field + .settings-field {
+        grid-column: 1;
+    }
 }
 
 @keyframes progress-indeterminate {
