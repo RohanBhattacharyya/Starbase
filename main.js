@@ -602,7 +602,7 @@ function watchAllInstanceMods() {
 async function downloadAndExtractClient(versionTag, instancePath, reportProgress = () => {}) {
     const releaseUrl = `https://api.github.com/repos/OpenStarbound/OpenStarbound/releases/tags/${versionTag}`;
     const tempDir = app.getPath('temp');
-    const downloadPath = path.join(tempDir, `openstarbound-${versionTag}.zip`);
+    let downloadPath = path.join(tempDir, `openstarbound-${versionTag}.zip`);
 
     try {
         console.log(`Fetching release info for ${versionTag}...`);
@@ -624,8 +624,16 @@ async function downloadAndExtractClient(versionTag, instancePath, reportProgress
             if (!asset) throw new Error(`No macOS client asset found for ${arch} in release ${versionTag}.`);
         }
         else { // linux
-            asset = release.assets.find(a => a.name.toLowerCase().includes('linux') && a.name.toLowerCase().includes('client'));
-            if (!asset) throw new Error(`No Linux client asset found in release ${versionTag}.`);
+        const arch = process.arch; // 'arm64' for ARM, 'x64' for x86_64
+            asset = release.assets.find(a => {
+        const name = a.name.toLowerCase();
+            if (!name.includes('linux') || !name.includes('client')) return false;
+        return arch === 'arm64'
+                ? (name.includes('arm') || name.includes('aarch64'))
+                : (!name.includes('arm') && !name.includes('aarch64'));
+            });
+            if (!asset) throw new Error(`No Linux client asset found for ${arch} in release ${versionTag}.`);
+                downloadPath = path.join(tempDir, asset.name);  
         }
 
         console.log(`Downloading ${asset.name}...`);
@@ -727,38 +735,56 @@ async function downloadAndExtractClient(versionTag, instancePath, reportProgress
                 });
             });
         } else { // Linux extraction
-            await new Promise((resolve, reject) => {
-                yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
-                    if (err) return reject(err);
-                    zipfile.readEntry();
-                    zipfile.on('entry', (entry) => {
-                        if (entry.fileName.includes('client.tar')) {
-                            console.log('Found client.tar. Extracting tarball...');
-                            zipfile.openReadStream(entry, (err, readStream) => {
-                                if (err) return reject(err);
-                                const extract = tar.extract(instancePath, {
-                                    map: (header) => {
-                                        header.name = header.name.replace(/^client_distribution\//, '');
-                                        return header;
-                                    }
+            if (downloadPath.endsWith('.zip')) {
+                await new Promise((resolve, reject) => {
+                    yauzl.open(downloadPath, { lazyEntries: true }, (err, zipfile) => {
+                        if (err) return reject(err);
+                        zipfile.readEntry();
+                        zipfile.on('entry', (entry) => {
+                            if (entry.fileName.includes('client.tar')) {
+                                console.log('Found client.tar. Extracting tarball...');
+                                zipfile.openReadStream(entry, (err, readStream) => {
+                                    if (err) return reject(err);
+                                    const extract = tar.extract(instancePath, {
+                                        map: (header) => {
+                                            header.name = header.name.replace(/^client_distribution\//, '');
+                                            return header;
+                                        }
+                                    });
+                                    readStream.pipe(extract);
+                                    extract.on('finish', () => {
+                                        console.log('Linux client extraction complete.');
+                                        zipfile.close();
+                                        resolve();
+                                    });
+                                    extract.on('error', reject);
                                 });
-                                readStream.pipe(extract);
-                                extract.on('finish', () => {
-                                    console.log('Linux client extraction complete.');
-                                    zipfile.close();
-                                    resolve();
-                                });
-                                extract.on('error', reject);
-                            });
-                        } else {
-                            zipfile.readEntry();
-                        }
-                    });
-                    zipfile.on('end', () => {
-                        // This might be reached if client.tar is not found
+                            } else {
+                                zipfile.readEntry();
+                            }
+                        });
+                        zipfile.on('end', () => resolve());
+                        zipfile.on('error', reject);
                     });
                 });
-            });
+            } else {
+                // Extracts .tar.lz / .tar.gz / .tar.xz using the already-imported `spawn`
+                console.log(`Extracting ${path.basename(downloadPath)} with tar...`);
+                await fse.ensureDir(instancePath);
+                await new Promise((resolve, reject) => {
+                    const tarProcess = spawn('tar', ['-xf', downloadPath, '-C', instancePath, '--strip-components=1']);
+                    let stderr = '';
+                    tarProcess.stderr.on('data', data => { stderr += data.toString(); });
+                    tarProcess.on('close', code => {
+                        if (code !== 0) {
+                            return reject(new Error(`Tar extraction failed (code ${code}): ${stderr}`));
+                        }
+                        console.log('Linux client tarball extraction complete.');
+                        resolve();
+                    });
+                    tarProcess.on('error', reject);
+                });
+            }
         }
 
         fs.unlinkSync(downloadPath); // Clean up the downloaded zip
